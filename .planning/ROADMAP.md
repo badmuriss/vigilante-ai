@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Test infrastructure + fix stop/start crash, thread safety, FPS throttling (BUG-01, BUG-02, MODL-03)
+- [x] 01-01-PLAN.md — Test infrastructure + fix stop/start crash, thread safety, FPS throttling (BUG-01, BUG-02, MODL-03)
 - [ ] 01-02-PLAN.md — Swap to 6-class PPE model, Portuguese labels, EPI config API, backend filter (MODL-01, MODL-02, CONF-01, CONF-03)
 - [ ] 01-03-PLAN.md — Frontend EPI panel, layout restructure, video states, alert cards (CONF-02)
 
@@ -70,6 +70,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Not started | - |
+| 1. Foundation | 1/3 | In progress | - |
 | 2. Detection Stability and Tracking | 0/2 | Not started | - |
 | 3. Infraction Logic and Alerts | 0/2 | Not started | - |

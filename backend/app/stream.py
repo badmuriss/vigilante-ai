@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 from app.alerts import AlertManager
 from app.camera import CameraManager
-from app.detector import VIOLATION_CLASSES, SafetyDetector
+from app.detector import SafetyDetector
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,17 @@ class StreamProcessor:
         self._current_jpeg: bytes = b""
         self._fps: float = 0.0
         self._start_time: float = 0.0
+        self._active_epis: set[str] = set()
+        self._epi_lock = threading.Lock()
+
+    @property
+    def active_epis(self) -> set[str]:
+        with self._epi_lock:
+            return self._active_epis.copy()
+
+    def set_active_epis(self, epis: set[str]) -> None:
+        with self._epi_lock:
+            self._active_epis = epis.copy()
 
     @property
     def is_running(self) -> bool:
@@ -113,14 +124,17 @@ class StreamProcessor:
                 continue
 
             detections = self._detector.detect(frame)
-            annotated = self._detector.annotate_frame(frame, detections)
 
-            violations = [d for d in detections if d.class_name in VIOLATION_CLASSES]
-            is_compliant = len(violations) == 0
+            # Filter by active EPIs
+            with self._epi_lock:
+                active = self._active_epis.copy()
+            filtered = [d for d in detections if d.class_name in active] if active else []
+
+            annotated = self._detector.annotate_frame(frame, filtered)
+
+            # Alert logic: placeholder until Task 2 wires full missing-EPI alerts
+            is_compliant = True
             self._alert_manager.record_frame(compliant=is_compliant)
-
-            for v in violations:
-                self._alert_manager.add_alert(v.class_name, v.confidence, frame)
 
             success, buffer = cv2.imencode(".jpg", annotated)
             if success:

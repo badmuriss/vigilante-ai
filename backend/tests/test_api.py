@@ -5,7 +5,7 @@ Covers: GET/POST /api/config/epis endpoints.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,18 +13,11 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def client() -> TestClient:
-    """FastAPI TestClient with mocked stream processor to avoid camera/model loading."""
-    # Patch stream_processor before importing app
-    with patch("app.main.stream_processor") as mock_sp:
-        mock_sp.active_epis = set()
-        mock_sp.is_running = False
-        mock_sp.fps = 0.0
-        mock_sp.uptime = 0.0
+    """FastAPI TestClient using real app with real stream_processor (no camera/model needed for config)."""
+    from app.main import app
 
-        from app.main import app
-
-        with TestClient(app) as c:
-            yield c
+    with TestClient(app) as c:
+        yield c
 
 
 class TestEpiConfigEndpoints:
@@ -56,19 +49,19 @@ class TestEpiConfigEndpoints:
 
     def test_post_epi_config(self, client: TestClient) -> None:
         """POST /api/config/epis updates which EPIs are active."""
-        with patch("app.main.stream_processor") as mock_sp:
-            mock_sp.active_epis = set()
+        resp = client.post(
+            "/api/config/epis",
+            json={"active_epis": ["capacete", "luvas"]},
+        )
+        assert resp.status_code == 200
 
-            resp = client.post(
-                "/api/config/epis",
-                json={"active_epis": ["capacete", "luvas"]},
-            )
-            assert resp.status_code == 200
+        data = resp.json()
+        active_items = [item for item in data["epis"] if item["active"]]
+        active_keys = {item["key"] for item in active_items}
+        assert active_keys == {"capacete", "luvas"}
 
-            data = resp.json()
-            active_items = [item for item in data["epis"] if item["active"]]
-            active_keys = {item["key"] for item in active_items}
-            assert active_keys == {"capacete", "luvas"}
+        # Reset for other tests
+        client.post("/api/config/epis", json={"active_epis": []})
 
     def test_post_epi_config_invalid_key(self, client: TestClient) -> None:
         """POST with invalid EPI key returns 400."""

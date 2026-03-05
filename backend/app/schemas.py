@@ -31,3 +31,17 @@ class StatsResponse(BaseModel):
     session_duration_seconds: float
     compliance_rate: float
     violations_timeline: list[ViolationTimelineEntry]
+
+
+class EPIItem(BaseModel):
+    key: str
+    label: str
+    active: bool
+
+
+class EPIConfigResponse(BaseModel):
+    epis: list[EPIItem]
+
+
+class EPIConfigRequest(BaseModel):
+    active_epis: list[str]

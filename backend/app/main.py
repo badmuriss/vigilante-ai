@@ -1,17 +1,20 @@
 from typing import Any, cast
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app.alerts import AlertManager
 from app.camera import CameraManager
 from app.config import settings
-from app.detector import SafetyDetector
+from app.detector import EPI_CLASSES, EPI_LABELS_PT, SafetyDetector
 from app.schemas import (
     AlertListResponse,
     AlertResponse,
     ClearAlertsResponse,
+    EPIConfigRequest,
+    EPIConfigResponse,
+    EPIItem,
     StatsResponse,
     ViolationTimelineEntry,
 )
@@ -103,6 +106,37 @@ def get_stats_endpoint() -> StatsResponse:
         compliance_rate=stats["compliance_rate"],
         violations_timeline=timeline,
     )
+
+
+_VALID_EPI_KEYS = set(EPI_CLASSES.values())
+
+
+@app.get("/api/config/epis", response_model=EPIConfigResponse)
+def get_epi_config() -> EPIConfigResponse:
+    active = stream_processor.active_epis
+    epis = [
+        EPIItem(key=key, label=label, active=key in active)
+        for key, label in EPI_LABELS_PT.items()
+    ]
+    return EPIConfigResponse(epis=epis)
+
+
+@app.post("/api/config/epis", response_model=EPIConfigResponse)
+def post_epi_config(request: EPIConfigRequest) -> EPIConfigResponse:
+    invalid = set(request.active_epis) - _VALID_EPI_KEYS
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid EPI keys: {sorted(invalid)}",
+        )
+    new_active = set(request.active_epis)
+    stream_processor.set_active_epis(new_active)
+    active = stream_processor.active_epis
+    epis = [
+        EPIItem(key=key, label=label, active=key in active)
+        for key, label in EPI_LABELS_PT.items()
+    ]
+    return EPIConfigResponse(epis=epis)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# YOLO model weights
+backend/models/*.pt
+backend/models/*.onnx
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+.venv/
+__pycache__/
+*.pyc

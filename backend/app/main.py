@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -6,6 +8,13 @@ from app.alerts import AlertManager
 from app.camera import CameraManager
 from app.config import settings
 from app.detector import SafetyDetector
+from app.schemas import (
+    AlertListResponse,
+    AlertResponse,
+    ClearAlertsResponse,
+    StatsResponse,
+    ViolationTimelineEntry,
+)
 from app.stream import StreamProcessor
 
 app = FastAPI(title="Vigilante.AI", version="0.1.0")
@@ -52,6 +61,48 @@ def start_stream() -> dict[str, bool]:
 def stop_stream() -> dict[str, bool]:
     stream_processor.stop()
     return {"stopped": True}
+
+
+@app.get("/api/alerts", response_model=AlertListResponse)
+def get_alerts() -> AlertListResponse:
+    alerts = alert_manager.get_alerts()
+    return AlertListResponse(
+        alerts=[
+            AlertResponse(
+                id=a.id,
+                timestamp=a.timestamp,
+                violation_type=a.violation_type,
+                confidence=a.confidence,
+                frame_thumbnail=a.frame_thumbnail,
+            )
+            for a in alerts
+        ]
+    )
+
+
+@app.delete("/api/alerts", response_model=ClearAlertsResponse)
+def clear_alerts() -> ClearAlertsResponse:
+    alert_manager.clear_alerts()
+    return ClearAlertsResponse(cleared=True)
+
+
+@app.get("/api/stats", response_model=StatsResponse)
+def get_stats_endpoint() -> StatsResponse:
+    stats = cast(dict[str, Any], alert_manager.get_stats())
+    raw_timeline = alert_manager.get_violations_timeline()
+    timeline = [
+        ViolationTimelineEntry(
+            timestamp=entry["timestamp"],
+            count=entry["count"],
+        )
+        for entry in raw_timeline
+    ]
+    return StatsResponse(
+        total_violations=stats["total_violations"],
+        session_duration_seconds=stats["session_duration_seconds"],
+        compliance_rate=stats["compliance_rate"],
+        violations_timeline=timeline,
+    )
 
 
 if __name__ == "__main__":

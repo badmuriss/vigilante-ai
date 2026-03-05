@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import base64
 import threading
-from collections import deque
+from collections import Counter, deque
 from datetime import datetime
+from typing import Any
 
 import cv2
 import numpy as np
@@ -75,6 +76,19 @@ class AlertManager:
         if compliant:
             self._compliant_frames += 1
 
+    def get_violations_timeline(self) -> list[dict[str, Any]]:
+        with self._lock:
+            alerts = list(self._alerts)
+        minute_counts: Counter[datetime] = Counter()
+        for alert in alerts:
+            minute_key = alert.timestamp.replace(second=0, microsecond=0)
+            minute_counts[minute_key] += 1
+        timeline = [
+            {"timestamp": ts, "count": count}
+            for ts, count in sorted(minute_counts.items())
+        ]
+        return timeline
+
     def get_stats(self) -> dict[str, object]:
         session_duration = (datetime.now() - self._session_start).total_seconds()
         total_violations = len(self._alerts)
@@ -87,4 +101,5 @@ class AlertManager:
             "total_violations": total_violations,
             "session_duration_seconds": round(session_duration, 1),
             "compliance_rate": round(compliance_rate, 1),
+            "violations_timeline": self.get_violations_timeline(),
         }

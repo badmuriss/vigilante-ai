@@ -15,6 +15,9 @@ from app.detector import VIOLATION_CLASSES, SafetyDetector
 
 logger = logging.getLogger(__name__)
 
+TARGET_FPS = 25
+FRAME_INTERVAL = 1.0 / TARGET_FPS
+
 
 class StreamProcessor:
     def __init__(
@@ -26,7 +29,9 @@ class StreamProcessor:
         self._camera = camera
         self._detector = detector
         self._alert_manager = alert_manager
-        self._running = False
+        self._stop_event = threading.Event()
+        self._stop_event.set()  # Start in stopped state
+        self._epoch: int = 0
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._current_jpeg: bytes = b""
@@ -35,41 +40,48 @@ class StreamProcessor:
 
     @property
     def is_running(self) -> bool:
-        return self._running
+        return not self._stop_event.is_set()
 
     @property
     def fps(self) -> float:
-        return self._fps
+        with self._lock:
+            return self._fps
 
     @property
     def uptime(self) -> float:
-        if self._start_time == 0.0:
+        with self._lock:
+            start = self._start_time
+        if start == 0.0:
             return 0.0
-        return time.monotonic() - self._start_time
+        return time.monotonic() - start
 
     def start(self) -> None:
-        if self._running:
+        if self.is_running:
             logger.warning("Stream processor already running")
             return
 
         if not self._detector.is_loaded:
             self._detector.load_model()
 
+        self._stop_event.clear()
+        self._epoch += 1
         self._camera.start()
-        self._running = True
-        self._start_time = time.monotonic()
+        with self._lock:
+            self._start_time = time.monotonic()
         self._thread = threading.Thread(target=self._process_loop, daemon=True)
         self._thread.start()
-        logger.info("Stream processor started")
+        logger.info("Stream processor started (epoch=%d)", self._epoch)
 
     def stop(self) -> None:
-        self._running = False
+        self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=5.0)
             self._thread = None
         self._camera.stop()
-        self._start_time = 0.0
-        self._fps = 0.0
+        with self._lock:
+            self._current_jpeg = b""
+            self._start_time = 0.0
+            self._fps = 0.0
         logger.info("Stream processor stopped")
 
     def get_jpeg_frame(self) -> bytes:
@@ -77,23 +89,27 @@ class StreamProcessor:
             return self._current_jpeg
 
     def generate_mjpeg(self) -> Generator[bytes, None, None]:
-        while self._running:
+        epoch = self._epoch
+        while not self._stop_event.is_set() and epoch == self._epoch:
             frame = self.get_jpeg_frame()
             if frame:
                 yield (
                     b"--frame\r\n"
                     b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 )
-            time.sleep(0.03)
+            # Wait with Event so stop() wakes us immediately
+            self._stop_event.wait(0.03)
 
     def _process_loop(self) -> None:
         frame_count = 0
         fps_timer = time.monotonic()
 
-        while self._running:
+        while not self._stop_event.is_set():
+            loop_start = time.monotonic()
+
             frame = self._camera.get_frame()
             if frame is None:
-                time.sleep(0.01)
+                self._stop_event.wait(0.01)
                 continue
 
             detections = self._detector.detect(frame)
@@ -115,8 +131,15 @@ class StreamProcessor:
             frame_count += 1
             elapsed = time.monotonic() - fps_timer
             if elapsed >= 1.0:
-                self._fps = round(frame_count / elapsed, 1)
+                with self._lock:
+                    self._fps = round(frame_count / elapsed, 1)
                 frame_count = 0
                 fps_timer = time.monotonic()
+
+            # FPS throttling: sleep remaining time to hit TARGET_FPS
+            processing_time = time.monotonic() - loop_start
+            sleep_time = FRAME_INTERVAL - processing_time
+            if sleep_time > 0:
+                self._stop_event.wait(sleep_time)
 
         logger.debug("Process loop exited")

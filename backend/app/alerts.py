@@ -26,7 +26,8 @@ class AlertManager:
         self._compliant_frames: int = 0
 
     def _is_on_cooldown(self, violation_type: str) -> bool:
-        last = self._cooldowns.get(violation_type)
+        with self._lock:
+            last = self._cooldowns.get(violation_type)
         if last is None:
             return False
         elapsed = (datetime.now() - last).total_seconds()
@@ -72,9 +73,10 @@ class AlertManager:
             self._cooldowns.clear()
 
     def record_frame(self, *, compliant: bool) -> None:
-        self._total_frames += 1
-        if compliant:
-            self._compliant_frames += 1
+        with self._lock:
+            self._total_frames += 1
+            if compliant:
+                self._compliant_frames += 1
 
     def get_violations_timeline(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -91,10 +93,13 @@ class AlertManager:
 
     def get_stats(self) -> dict[str, object]:
         session_duration = (datetime.now() - self._session_start).total_seconds()
-        total_violations = len(self._alerts)
+        with self._lock:
+            total_violations = len(self._alerts)
+            total_frames = self._total_frames
+            compliant_frames = self._compliant_frames
         compliance_rate = (
-            (self._compliant_frames / self._total_frames * 100.0)
-            if self._total_frames > 0
+            (compliant_frames / total_frames * 100.0)
+            if total_frames > 0
             else 100.0
         )
         return {

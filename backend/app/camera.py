@@ -18,15 +18,16 @@ class CameraManager:
         self._capture: cv2.VideoCapture | None = None
         self._frame: NDArray[np.uint8] | None = None
         self._lock = threading.Lock()
-        self._running = False
+        self._stop_event = threading.Event()
+        self._stop_event.set()  # Start in stopped state
         self._thread: threading.Thread | None = None
 
     @property
     def is_running(self) -> bool:
-        return self._running
+        return not self._stop_event.is_set()
 
     def start(self) -> None:
-        if self._running:
+        if self.is_running:
             logger.warning("Camera is already running")
             return
 
@@ -40,7 +41,7 @@ class CameraManager:
             logger.error("Failed to open camera at index %d", settings.CAMERA_INDEX)
             raise RuntimeError(f"Cannot open camera at index {settings.CAMERA_INDEX}")
 
-        self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._capture_loop, daemon=True)
         self._thread.start()
         logger.info(
@@ -51,7 +52,7 @@ class CameraManager:
         )
 
     def stop(self) -> None:
-        self._running = False
+        self._stop_event.set()
         if self._thread is not None:
             self._thread.join(timeout=5.0)
             self._thread = None
@@ -69,11 +70,11 @@ class CameraManager:
             return self._frame.copy()
 
     def _capture_loop(self) -> None:
-        while self._running and self._capture is not None:
+        while not self._stop_event.is_set() and self._capture is not None:
             ret, frame = self._capture.read()
             if not ret:
                 logger.warning("Failed to read frame from camera")
-                time.sleep(0.01)
+                self._stop_event.wait(0.01)
                 continue
             with self._lock:
                 self._frame = np.asarray(frame, dtype=np.uint8)

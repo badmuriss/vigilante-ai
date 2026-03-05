@@ -38,3 +38,6 @@ Thumbs.db
 .venv/
 __pycache__/
 *.pyc
+
+scripts/ralph
+tasks

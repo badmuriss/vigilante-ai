@@ -27,12 +27,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Video stream shows bounding boxes for detected PPE items from the 6-class model (Luvas, Colete, Protecao ocular, Capacete, Mascara, Calcado de seguranca) with Portuguese labels
   3. User can check/uncheck EPIs in a frontend panel and only selected EPIs appear in detection results and alerts
   4. Stream runs at 20-30 FPS without frame drops or thread-safety-related errors
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md — Test infrastructure + fix stop/start crash, thread safety, FPS throttling (BUG-01, BUG-02, MODL-03)
+- [ ] 01-02-PLAN.md — Swap to 6-class PPE model, Portuguese labels, EPI config API, backend filter (MODL-01, MODL-02, CONF-01, CONF-03)
+- [ ] 01-03-PLAN.md — Frontend EPI panel, layout restructure, video states, alert cards (CONF-02)
 
 ### Phase 2: Detection Stability and Tracking
 **Goal**: Detections are stable across frames with persistent person zones, eliminating flickering and false positives on non-person objects

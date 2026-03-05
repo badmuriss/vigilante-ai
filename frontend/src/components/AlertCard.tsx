@@ -2,11 +2,6 @@
 
 import type { Alert } from "@/types";
 
-const VIOLATION_LABELS: Record<string, string> = {
-  no_safety_glasses: "Sem oculos",
-  no_hardhat: "Sem capacete",
-};
-
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
   return date.toLocaleTimeString("pt-BR", {
@@ -16,8 +11,16 @@ function formatTimestamp(iso: string): string {
   });
 }
 
+function parseViolation(violationType: string): { epiName: string; suffix: string } {
+  // violation_type comes as "Capacete ausente", "Luvas ausentes", etc.
+  const parts = violationType.split(" ");
+  const suffix = parts.pop() ?? "";
+  const epiName = parts.join(" ") || violationType;
+  return { epiName, suffix };
+}
+
 export default function AlertCard({ alert }: { alert: Alert }) {
-  const label = VIOLATION_LABELS[alert.violation_type] ?? alert.violation_type;
+  const { epiName, suffix } = parseViolation(alert.violation_type);
   const confidence = Math.round(alert.confidence * 100);
 
   return (
@@ -31,14 +34,21 @@ export default function AlertCard({ alert }: { alert: Alert }) {
       )}
       <div className="flex flex-col justify-center gap-1 overflow-hidden">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-red-400">{label}</span>
-          <span className="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">
-            {confidence}%
+          <span className="text-sm font-medium text-gray-100">{epiName}</span>
+          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-400">
+            {suffix}
           </span>
         </div>
-        <span className="text-xs text-gray-500">
-          {formatTimestamp(alert.timestamp)}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">
+            {formatTimestamp(alert.timestamp)}
+          </span>
+          {confidence > 0 && (
+            <span className="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">
+              {confidence}%
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

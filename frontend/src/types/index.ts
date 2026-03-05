@@ -1,11 +1,19 @@
-export type ViolationType = "no_safety_glasses" | "no_hardhat";
-
 export interface Alert {
   id: string;
   timestamp: string;
-  violation_type: ViolationType;
+  violation_type: string;
   confidence: number;
   frame_thumbnail: string;
+}
+
+export interface EPIItem {
+  key: string;
+  label: string;
+  active: boolean;
+}
+
+export interface EPIConfig {
+  epis: EPIItem[];
 }
 
 export interface SystemStatus {

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-05T22:23:41Z"
-last_activity: 2026-03-05 — Completed Plan 01-01 (stream stability + test infrastructure)
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-05T22:32:40.889Z"
+last_activity: 2026-03-05 — Completed Plan 01-02 (PPE model + EPI config)
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 7
-  completed_plans: 1
-  percent: 14
+  total_plans: 3
+  completed_plans: 2
+  percent: 29
 ---
 
 # Project State
@@ -26,28 +26,28 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 1 of 3 (Foundation)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-03-05 — Completed Plan 01-01 (stream stability + test infrastructure)
+Last activity: 2026-03-05 — Completed Plan 01-02 (PPE model + EPI config)
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [███░░░░░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 3min
-- Total execution time: 0.05 hours
+- Total plans completed: 2
+- Average duration: 4min
+- Total execution time: 0.13 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1. Foundation | 1/3 | 3min | 3min |
+| 1. Foundation | 2/3 | 8min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (3min)
-- Trend: Starting
+- Last 5 plans: 01-01 (3min), 01-02 (5min)
+- Trend: Stable
 
 *Updated after each plan completion*
 
@@ -63,6 +63,10 @@ Recent decisions affecting current work:
 - threading.Event replaces bool _running for immediate stop response via Event.wait
 - Epoch counter invalidates stale MJPEG generators across stop/start cycles
 - TARGET_FPS=25 as module-level constant (configurable via Settings deferred to Plan 02)
+- EPI_CLASSES maps class_id integers to Portuguese keys, not English model names
+- Empty active_epis set means zero detections pass through
+- Person proxy: at least one active EPI detected triggers missing-EPI alert check
+- stop() calls reset_session() to clear all alert state
 
 ### Pending Todos
 
@@ -70,10 +74,10 @@ None yet.
 
 ### Blockers/Concerns
 
-- Ultralytics version compatibility with HF model weights is unknown -- validate model loading early in Phase 1.
+None -- model loading validated successfully with best.pt (6 classes: Gloves, Vest, goggles, helmet, mask, safety_shoe).
 
 ## Session Continuity
 
-Last session: 2026-03-05T22:23:41Z
-Stopped at: Completed 01-01-PLAN.md
-Resume file: .planning/phases/01-foundation/01-01-SUMMARY.md
+Last session: 2026-03-05T22:32:40.888Z
+Stopped at: Completed 01-02-PLAN.md
+Resume file: None

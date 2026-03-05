@@ -12,15 +12,15 @@
 
 ### Model Integration
 
-- [ ] **MODL-01**: Swap generic `yolov8n.pt` for PPE-specific `best.pt` (6 classes: Gloves, Vest, goggles, helmet, mask, safety_shoe)
-- [ ] **MODL-02**: Map model classes to Portuguese labels (Luvas, Colete, Protecao ocular, Capacete, Mascara, Calcado de seguranca)
+- [x] **MODL-01**: Swap generic `yolov8n.pt` for PPE-specific `best.pt` (6 classes: Gloves, Vest, goggles, helmet, mask, safety_shoe)
+- [x] **MODL-02**: Map model classes to Portuguese labels (Luvas, Colete, Protecao ocular, Capacete, Mascara, Calcado de seguranca)
 - [x] **MODL-03**: Cap detection FPS at 20-30 for better accuracy per frame
 
 ### Configuration
 
-- [ ] **CONF-01**: API endpoint to get/set active EPIs (which of the 6 classes to monitor)
+- [x] **CONF-01**: API endpoint to get/set active EPIs (which of the 6 classes to monitor)
 - [ ] **CONF-02**: Frontend checkbox panel to select which EPIs to monitor
-- [ ] **CONF-03**: Backend filters detections to only generate alerts for active EPIs
+- [x] **CONF-03**: Backend filters detections to only generate alerts for active EPIs
 
 ### Detection Stability
 
@@ -69,12 +69,12 @@
 |-------------|-------|--------|
 | BUG-01 | Phase 1 | Complete |
 | BUG-02 | Phase 1 | Complete |
-| MODL-01 | Phase 1 | Pending |
-| MODL-02 | Phase 1 | Pending |
+| MODL-01 | Phase 1 | Complete |
+| MODL-02 | Phase 1 | Complete |
 | MODL-03 | Phase 1 | Complete |
-| CONF-01 | Phase 1 | Pending |
+| CONF-01 | Phase 1 | Complete |
 | CONF-02 | Phase 1 | Pending |
-| CONF-03 | Phase 1 | Pending |
+| CONF-03 | Phase 1 | Complete |
 | STAB-01 | Phase 2 | Pending |
 | STAB-02 | Phase 2 | Pending |
 | STAB-03 | Phase 2 | Pending |

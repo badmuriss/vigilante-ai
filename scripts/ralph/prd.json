@@ -1,0 +1,182 @@
+{
+  "project": "Vigilante.AI",
+  "branchName": "ralph/vigilante-ai-mvp",
+  "description": "MVP de seguranca do trabalho com visao computacional. Detecta oculos de protecao e capacete via webcam usando YOLOv8, exibe alertas visuais em tempo real. Backend FastAPI + Frontend Next.js.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Setup do projeto backend Python com FastAPI",
+      "description": "Como desenvolvedor, preciso da estrutura base do backend Python com FastAPI configurado.",
+      "acceptanceCriteria": [
+        "Criar backend/app/main.py com FastAPI app e rota GET /api/status retornando {status: 'ok'}",
+        "Criar backend/app/config.py com classe Settings (CAMERA_INDEX, MODEL_PATH, CONFIDENCE_THRESHOLD, CORS_ORIGINS, HOST, PORT)",
+        "Criar backend/requirements.txt com fastapi, uvicorn, opencv-python-headless, ultralytics, python-multipart",
+        "Criar backend/pyproject.toml com metadata do projeto",
+        "CORS middleware configurado para http://localhost:3000",
+        "Servidor inicia com uvicorn e responde em http://localhost:8000/api/status",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Estrutura: backend/app/main.py, backend/app/config.py. Usar Python 3.11+."
+    },
+    {
+      "id": "US-002",
+      "title": "Classe de deteccao YOLO para EPIs (oculos e capacete)",
+      "description": "Como desenvolvedor, preciso de uma classe que carrega o modelo YOLOv8 e executa inferencia em imagens para detectar oculos de protecao e capacete.",
+      "acceptanceCriteria": [
+        "Criar backend/app/detector.py com classe SafetyDetector",
+        "Metodo load_model() carrega modelo YOLOv8n (nano) pre-treinado para deteccao de EPIs",
+        "Metodo detect(frame) recebe numpy array (imagem) e retorna lista de Detection(class_name, confidence, bbox)",
+        "Metodo annotate_frame(frame, detections) desenha bounding boxes: verde para EPI detectado, vermelho para EPI ausente, com label indicando o tipo (oculos/capacete)",
+        "Classes de deteccao: safety_glasses, no_safety_glasses, hardhat, no_hardhat",
+        "Confianca minima configuravel via Settings.CONFIDENCE_THRESHOLD",
+        "Criar backend/app/models.py com dataclass Detection(class_name: str, confidence: float, bbox: tuple)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Usar ultralytics YOLO. Para o MVP, usar yolov8n.pt pre-treinado. Classes de deteccao: safety_glasses, no_safety_glasses, hardhat, no_hardhat. Se modelo especifico nao disponivel, usar deteccao de pessoa como fallback e documentar."
+    },
+    {
+      "id": "US-003",
+      "title": "Captura de webcam com OpenCV",
+      "description": "Como sistema, preciso capturar frames da webcam em tempo real.",
+      "acceptanceCriteria": [
+        "Criar backend/app/camera.py com classe CameraManager",
+        "Metodo start() abre webcam via cv2.VideoCapture(Settings.CAMERA_INDEX)",
+        "Metodo stop() libera webcam corretamente",
+        "Metodo get_frame() retorna frame atual como numpy array",
+        "Property is_running retorna status da captura",
+        "Resolucao configuravel via Settings (640x480 padrao)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Usar threading para captura continua sem bloquear o event loop do FastAPI."
+    },
+    {
+      "id": "US-004",
+      "title": "Gerenciamento de alertas in-memory",
+      "description": "Como sistema, preciso armazenar e gerenciar alertas de violacoes detectadas.",
+      "acceptanceCriteria": [
+        "Criar backend/app/alerts.py com classe AlertManager",
+        "Dataclass Alert com: id (uuid), timestamp, violation_type, confidence, frame_thumbnail (base64 jpg)",
+        "Metodo add_alert() cria alerta e adiciona a lista (max 50, FIFO)",
+        "Metodo get_alerts() retorna lista de alertas ordenada por timestamp desc",
+        "Metodo clear_alerts() limpa todos os alertas",
+        "Cooldown configuravel: nao gerar alerta duplicado dentro de N segundos (Settings.ALERT_COOLDOWN_SECONDS)",
+        "Metodo get_stats() retorna total_violations, session_duration, compliance_rate",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Alertas ficam em memoria, sem banco de dados. Thumbnail eh o frame reduzido e encodado em base64."
+    },
+    {
+      "id": "US-005",
+      "title": "Pipeline de deteccao e streaming MJPEG",
+      "description": "Como sistema, preciso integrar camera + detector + alertas e servir stream MJPEG anotado.",
+      "acceptanceCriteria": [
+        "Criar backend/app/stream.py com classe StreamProcessor",
+        "Integra CameraManager + SafetyDetector + AlertManager em loop de processamento",
+        "Cada frame: captura -> inferencia YOLO -> anotacao -> gera alerta se violacao (sem oculos ou sem capacete) -> encode JPEG",
+        "Endpoint GET /api/stream retorna multipart/x-mixed-replace com frames JPEG",
+        "Endpoint POST /api/stream/start inicia captura e processamento",
+        "Endpoint POST /api/stream/stop para captura e processamento",
+        "Endpoint GET /api/status retorna {camera_active, model_loaded, fps, uptime}",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Registrar rotas no main.py. O stream MJPEG usa StreamingResponse do FastAPI com boundary frame."
+    },
+    {
+      "id": "US-006",
+      "title": "Endpoints REST de alertas e estatisticas",
+      "description": "Como desenvolvedor frontend, preciso de endpoints para obter alertas e stats.",
+      "acceptanceCriteria": [
+        "Endpoint GET /api/alerts retorna JSON com lista dos ultimos 50 alertas",
+        "Endpoint DELETE /api/alerts limpa todos os alertas e retorna {cleared: true}",
+        "Endpoint GET /api/stats retorna {total_violations, session_duration_seconds, compliance_rate, violations_timeline}",
+        "violations_timeline eh lista de {timestamp, count} agrupado por minuto",
+        "Todos os endpoints tem response_model definido com Pydantic",
+        "Swagger/OpenAPI acessivel em /docs",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Criar schemas Pydantic em backend/app/schemas.py para os responses."
+    },
+    {
+      "id": "US-007",
+      "title": "Setup do projeto frontend Next.js",
+      "description": "Como desenvolvedor, preciso da estrutura base do frontend Next.js com Tailwind.",
+      "acceptanceCriteria": [
+        "Criar frontend/ com Next.js 14 (App Router) via create-next-app",
+        "Tailwind CSS configurado e funcionando",
+        "Criar frontend/src/lib/api.ts com funcoes para chamar o backend (getStatus, getAlerts, clearAlerts, getStats, startStream, stopStream)",
+        "Criar frontend/src/types/index.ts com tipos TypeScript: Alert (com violation_type: 'no_safety_glasses' | 'no_hardhat'), SystemStatus, SessionStats, ViolationTimelineEntry",
+        "Layout base em layout.tsx com header 'Vigilante.AI' e navegacao (Monitor | Dashboard)",
+        "Pagina inicial (page.tsx) renderiza com placeholder 'Monitoramento'",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Usar App Router (src/app/). API base URL: http://localhost:8000."
+    },
+    {
+      "id": "US-008",
+      "title": "Pagina de monitoramento - feed de video",
+      "description": "Como operador, quero ver o feed da webcam ao vivo com deteccoes sobrepostas.",
+      "acceptanceCriteria": [
+        "Criar componente VideoFeed que exibe img com src http://localhost:8000/api/stream",
+        "Criar componente StatusBar que mostra status do sistema (online/offline, FPS) via polling GET /api/status a cada 2s",
+        "Criar componente Controls com botoes Iniciar/Parar monitoramento que chamam POST /api/stream/start e /stop",
+        "Pagina principal (page.tsx) compoe VideoFeed + StatusBar + Controls",
+        "Layout funcional em telas >= 1024px",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "MJPEG stream funciona com tag img simples. StatusBar usa polling com setInterval."
+    },
+    {
+      "id": "US-009",
+      "title": "Painel de alertas na pagina de monitoramento",
+      "description": "Como operador, quero ver alertas recentes ao lado do feed de video.",
+      "acceptanceCriteria": [
+        "Criar componente AlertCard que mostra: thumbnail, timestamp formatado, tipo de violacao (sem oculos / sem capacete), badge de confianca",
+        "Criar componente AlertPanel com lista de AlertCards, polling GET /api/alerts a cada 2s",
+        "Novos alertas aparecem no topo da lista",
+        "Botao 'Limpar alertas' que chama DELETE /api/alerts",
+        "Contador de violacoes no header do painel",
+        "Toggle para ativar/desativar som de notificacao (Audio API do browser)",
+        "Integrar AlertPanel na pagina principal ao lado do VideoFeed",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Layout: VideoFeed ocupa 2/3 da tela, AlertPanel ocupa 1/3 (grid ou flex)."
+    },
+    {
+      "id": "US-010",
+      "title": "Pagina de dashboard com estatisticas",
+      "description": "Como gerente, quero ver estatisticas da sessao de monitoramento.",
+      "acceptanceCriteria": [
+        "Criar pagina /dashboard (frontend/src/app/dashboard/page.tsx)",
+        "Componente StatsCards com cards: Total de violacoes, Tempo de monitoramento, Taxa de conformidade (%)",
+        "Componente ViolationsChart com grafico de linha mostrando violacoes ao longo do tempo (ultimos 30 min)",
+        "Dados obtidos via polling GET /api/stats a cada 5s",
+        "Usar Recharts para o grafico",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Instalar recharts como dependencia. Cards com estilo Tailwind simples."
+    }
+  ]
+}

@@ -281,9 +281,11 @@ class TestMissingEpiAlerts:
         stream_processor.set_active_epis({"capacete", "luvas"})
         stream_processor.start()
         time.sleep(0.3)
+
+        # Read alerts BEFORE stop (stop resets alerts per CONTEXT.md decision)
+        alerts = alert_manager.get_alerts()
         stream_processor.stop()
 
-        alerts = alert_manager.get_alerts()
         # Should have at least one alert for missing capacete
         assert len(alerts) > 0, "Expected alert for missing capacete"
         alert_types = {a.violation_type for a in alerts}
@@ -306,9 +308,11 @@ class TestMissingEpiAlerts:
         stream_processor.set_active_epis({"capacete", "luvas"})
         stream_processor.start()
         time.sleep(0.3)
+
+        # Read alerts BEFORE stop (stop resets alerts)
+        alerts = alert_manager.get_alerts()
         stream_processor.stop()
 
-        alerts = alert_manager.get_alerts()
         alert_types = {a.violation_type for a in alerts}
         assert "Luvas ausentes" in alert_types, (
             f"Expected 'Luvas ausentes' in alerts, got {alert_types}"

@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 from app.alerts import AlertManager
 from app.camera import CameraManager
-from app.detector import SafetyDetector
+from app.detector import EPI_ALERT_LABELS, SafetyDetector
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,7 @@ class StreamProcessor:
             self._thread.join(timeout=5.0)
             self._thread = None
         self._camera.stop()
+        self._alert_manager.reset_session()
         with self._lock:
             self._current_jpeg = b""
             self._start_time = 0.0
@@ -132,8 +133,19 @@ class StreamProcessor:
 
             annotated = self._detector.annotate_frame(frame, filtered)
 
-            # Alert logic: placeholder until Task 2 wires full missing-EPI alerts
-            is_compliant = True
+            # Alert logic: check for missing active EPIs
+            if filtered:
+                # Person proxy: at least one active EPI detected
+                detected_keys = {d.class_name for d in filtered}
+                missing_keys = active - detected_keys
+                for key in missing_keys:
+                    alert_label = EPI_ALERT_LABELS.get(key, key)
+                    self._alert_manager.add_alert(alert_label, 0.0, frame)
+                is_compliant = len(missing_keys) == 0
+            else:
+                # No active EPIs detected = no person = compliant by default
+                is_compliant = True
+
             self._alert_manager.record_frame(compliant=is_compliant)
 
             success, buffer = cv2.imencode(".jpg", annotated)

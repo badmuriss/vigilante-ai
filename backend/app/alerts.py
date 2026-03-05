@@ -72,6 +72,15 @@ class AlertManager:
             self._alerts.clear()
             self._cooldowns.clear()
 
+    def reset_session(self) -> None:
+        """Clear all alerts, cooldowns, counters, and reset session start."""
+        with self._lock:
+            self._alerts.clear()
+            self._cooldowns.clear()
+            self._total_frames = 0
+            self._compliant_frames = 0
+            self._session_start = datetime.now()
+
     def record_frame(self, *, compliant: bool) -> None:
         with self._lock:
             self._total_frames += 1

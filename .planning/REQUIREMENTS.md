@@ -67,28 +67,28 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BUG-01 | — | Pending |
-| BUG-02 | — | Pending |
-| MODL-01 | — | Pending |
-| MODL-02 | — | Pending |
-| MODL-03 | — | Pending |
-| CONF-01 | — | Pending |
-| CONF-02 | — | Pending |
-| CONF-03 | — | Pending |
-| STAB-01 | — | Pending |
-| STAB-02 | — | Pending |
-| STAB-03 | — | Pending |
-| INFR-01 | — | Pending |
-| INFR-02 | — | Pending |
-| INFR-03 | — | Pending |
-| INFR-04 | — | Pending |
-| INFR-05 | — | Pending |
+| BUG-01 | Phase 1 | Pending |
+| BUG-02 | Phase 1 | Pending |
+| MODL-01 | Phase 1 | Pending |
+| MODL-02 | Phase 1 | Pending |
+| MODL-03 | Phase 1 | Pending |
+| CONF-01 | Phase 1 | Pending |
+| CONF-02 | Phase 1 | Pending |
+| CONF-03 | Phase 1 | Pending |
+| STAB-01 | Phase 2 | Pending |
+| STAB-02 | Phase 2 | Pending |
+| STAB-03 | Phase 2 | Pending |
+| INFR-01 | Phase 3 | Pending |
+| INFR-02 | Phase 3 | Pending |
+| INFR-03 | Phase 3 | Pending |
+| INFR-04 | Phase 3 | Pending |
+| INFR-05 | Phase 3 | Pending |
 
 **Coverage:**
 - v1 requirements: 16 total
-- Mapped to phases: 0
-- Unmapped: 16
+- Mapped to phases: 16
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-05*
-*Last updated: 2026-03-05 after initial definition*
+*Last updated: 2026-03-05 after roadmap creation*

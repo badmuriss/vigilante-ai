@@ -58,7 +58,7 @@ export default function AlertPanel() {
   }
 
   return (
-    <div className="flex h-full max-h-[inherit] flex-col rounded-lg border border-gray-200 bg-gray-50">
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">Alertas</h3>

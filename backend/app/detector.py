@@ -44,8 +44,8 @@ EPI_ALERT_LABELS: dict[str, str] = {
     "mascara": "Mascara ausente",
 }
 
-GREEN = (0, 200, 0)
-LABEL_BG = (0, 120, 0)
+GREEN = (100, 220, 100)
+LABEL_BG = (60, 160, 60)
 RED = (0, 0, 255)
 
 
@@ -106,8 +106,7 @@ class SafetyDetector:
     ) -> NDArray[np.uint8]:
         annotated = frame.copy()
         for det in detections:
-            label_text = EPI_LABELS_PT.get(det.class_name, det.class_name)
-            label = f"{label_text} {det.confidence:.0%}"
+            label = EPI_LABELS_PT.get(det.class_name, det.class_name)
             x1, y1, x2, y2 = det.bbox
             cv2.rectangle(annotated, (x1, y1), (x2, y2), GREEN, 2)
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)

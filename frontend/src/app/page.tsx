@@ -50,13 +50,13 @@ export default function Home() {
         <Controls isRunning={isRunning} onStart={handleStart} onStop={handleStop} />
       </div>
 
-      {/* Main grid: Video + EPI (left) | Alerts (right) */}
-      <div className="flex flex-col gap-4 lg:flex-row">
+      {/* Main grid: Video + EPI (left) | Alerts (right) — same height */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1 space-y-4">
           <VideoFeed isRunning={isRunning} />
           <EPIPanel />
         </div>
-        <div className="w-full shrink-0 lg:max-h-[calc(100vh-8rem)] lg:w-80">
+        <div className="w-full shrink-0 self-stretch lg:w-80">
           <AlertPanel />
         </div>
       </div>

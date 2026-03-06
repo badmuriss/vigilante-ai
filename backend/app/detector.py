@@ -116,16 +116,18 @@ class SafetyDetector:
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
             )
 
-        if missing_epis and detections:
-            # Compute person region from union of all detection bboxes
-            all_x1 = min(d.bbox[0] for d in detections)
-            all_y1 = min(d.bbox[1] for d in detections)
-            all_x2 = max(d.bbox[2] for d in detections)
-            all_y2 = max(d.bbox[3] for d in detections)
+        if missing_epis:
+            if detections:
+                # Position relative to detected bounding boxes
+                ref_x2 = max(d.bbox[2] for d in detections)
+                ref_y1 = min(d.bbox[1] for d in detections)
+                circle_x = ref_x2 + 30
+                start_y = ref_y1 + 20
+            else:
+                # No detections — draw in top-left corner
+                circle_x = 30
+                start_y = 30
 
-            # Draw red circles + labels to the right of the person region
-            circle_x = all_x2 + 30
-            start_y = all_y1 + 20
             for i, epi_key in enumerate(sorted(missing_epis)):
                 cy = start_y + i * 35
                 cv2.circle(annotated, (circle_x, cy), 10, RED, -1)

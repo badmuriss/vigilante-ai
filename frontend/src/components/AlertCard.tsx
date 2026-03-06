@@ -24,7 +24,7 @@ export default function AlertCard({ alert }: { alert: Alert }) {
   const confidence = Math.round(alert.confidence * 100);
 
   return (
-    <div className="flex gap-3 rounded-lg border border-gray-800 bg-gray-900 p-3">
+    <div className="flex gap-3 rounded-lg border border-gray-200 bg-white p-3">
       {alert.frame_thumbnail && (
         <img
           src={`data:image/jpeg;base64,${alert.frame_thumbnail}`}
@@ -34,8 +34,8 @@ export default function AlertCard({ alert }: { alert: Alert }) {
       )}
       <div className="flex flex-col justify-center gap-1 overflow-hidden">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-100">{epiName}</span>
-          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs font-medium text-amber-400">
+          <span className="text-sm font-medium text-gray-800">{epiName}</span>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-600">
             {suffix}
           </span>
         </div>
@@ -44,7 +44,7 @@ export default function AlertCard({ alert }: { alert: Alert }) {
             {formatTimestamp(alert.timestamp)}
           </span>
           {confidence > 0 && (
-            <span className="rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-400">
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
               {confidence}%
             </span>
           )}

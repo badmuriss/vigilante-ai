@@ -14,7 +14,7 @@ from app.models import Detection
 logger = logging.getLogger(__name__)
 
 # 6-class PPE model mapping: class_id -> internal Portuguese key
-EPI_CLASSES: dict[int, str] = {
+_ALL_EPI_CLASSES: dict[int, str] = {
     0: "luvas",
     1: "colete",
     2: "protecao_ocular",
@@ -23,27 +23,30 @@ EPI_CLASSES: dict[int, str] = {
     5: "calcado_seguranca",
 }
 
+# MVP: face/head EPIs only
+MVP_EPI_KEYS = {"protecao_ocular", "capacete", "mascara"}
+
+EPI_CLASSES: dict[int, str] = {
+    k: v for k, v in _ALL_EPI_CLASSES.items() if v in MVP_EPI_KEYS
+}
+
 # Portuguese display labels for bounding box annotation
 EPI_LABELS_PT: dict[str, str] = {
-    "luvas": "Luvas",
-    "colete": "Colete",
     "protecao_ocular": "Protecao ocular",
     "capacete": "Capacete",
     "mascara": "Mascara",
-    "calcado_seguranca": "Calcado de seguranca",
 }
 
 # Portuguese alert labels for missing EPI violations
 EPI_ALERT_LABELS: dict[str, str] = {
-    "luvas": "Luvas ausentes",
-    "colete": "Colete ausente",
     "protecao_ocular": "Protecao ocular ausente",
     "capacete": "Capacete ausente",
     "mascara": "Mascara ausente",
-    "calcado_seguranca": "Calcado de seguranca ausente",
 }
 
-GREEN = (0, 255, 0)
+GREEN = (0, 200, 0)
+LABEL_BG = (0, 120, 0)
+RED = (0, 0, 255)
 
 
 class SafetyDetector:
@@ -96,7 +99,10 @@ class SafetyDetector:
         return detections
 
     def annotate_frame(
-        self, frame: NDArray[np.uint8], detections: list[Detection]
+        self,
+        frame: NDArray[np.uint8],
+        detections: list[Detection],
+        missing_epis: set[str] | None = None,
     ) -> NDArray[np.uint8]:
         annotated = frame.copy()
         for det in detections:
@@ -105,9 +111,30 @@ class SafetyDetector:
             x1, y1, x2, y2 = det.bbox
             cv2.rectangle(annotated, (x1, y1), (x2, y2), GREEN, 2)
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-            cv2.rectangle(annotated, (x1, y1 - th - 8), (x1 + tw, y1), GREEN, -1)
+            cv2.rectangle(annotated, (x1, y1 - th - 8), (x1 + tw + 4, y1), LABEL_BG, -1)
             cv2.putText(
-                annotated, label, (x1, y1 - 4),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+                annotated, label, (x1 + 2, y1 - 4),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
             )
+
+        if missing_epis and detections:
+            # Compute person region from union of all detection bboxes
+            all_x1 = min(d.bbox[0] for d in detections)
+            all_y1 = min(d.bbox[1] for d in detections)
+            all_x2 = max(d.bbox[2] for d in detections)
+            all_y2 = max(d.bbox[3] for d in detections)
+
+            # Draw red circles + labels to the right of the person region
+            circle_x = all_x2 + 30
+            start_y = all_y1 + 20
+            for i, epi_key in enumerate(sorted(missing_epis)):
+                cy = start_y + i * 35
+                cv2.circle(annotated, (circle_x, cy), 10, RED, -1)
+                label_text = EPI_LABELS_PT.get(epi_key, epi_key)
+                cv2.putText(
+                    annotated, f"{label_text} ausente",
+                    (circle_x + 18, cy + 5),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, RED, 2,
+                )
+
         return annotated

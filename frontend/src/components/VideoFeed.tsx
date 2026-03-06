@@ -22,7 +22,7 @@ export default function VideoFeed({ isRunning }: VideoFeedProps) {
   }, [isRunning]);
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-gray-800 bg-gray-900">
+    <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
       {!isRunning ? (
         <div className="flex h-full items-center justify-center">
           <p className="px-4 text-center text-sm text-gray-400">

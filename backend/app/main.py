@@ -55,8 +55,11 @@ def get_stream() -> StreamingResponse:
 
 
 @app.post("/api/stream/start")
-def start_stream() -> dict[str, bool]:
-    stream_processor.start()
+def start_stream() -> dict[str, str | bool]:
+    try:
+        stream_processor.start()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     return {"started": True}
 
 

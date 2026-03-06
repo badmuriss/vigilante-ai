@@ -28,28 +28,28 @@ export default function ViolationsChart({ timeline }: ViolationsChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-lg border border-gray-800 bg-gray-900 text-gray-500">
+      <div className="flex h-64 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500">
         Sem dados de violacoes ainda
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900 p-4">
-      <h3 className="mb-4 text-sm font-medium text-gray-400">
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <h3 className="mb-4 text-sm font-medium text-gray-600">
         Violacoes ao longo do tempo (ultimos 30 min)
       </h3>
       <ResponsiveContainer width="100%" height={256}>
         <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-          <XAxis dataKey="time" stroke="#9ca3af" fontSize={12} />
-          <YAxis stroke="#9ca3af" fontSize={12} allowDecimals={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis dataKey="time" stroke="#6b7280" fontSize={12} />
+          <YAxis stroke="#6b7280" fontSize={12} allowDecimals={false} />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
+              backgroundColor: "#ffffff",
+              border: "1px solid #e5e7eb",
               borderRadius: "0.5rem",
-              color: "#f3f4f6",
+              color: "#374151",
             }}
           />
           <Line

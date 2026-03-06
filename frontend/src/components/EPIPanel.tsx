@@ -36,32 +36,28 @@ export default function EPIPanel() {
   );
 
   return (
-    <div className="flex h-full flex-col rounded-lg border border-gray-800 bg-gray-900/50">
-      <div className="border-b border-gray-800 px-4 py-3">
-        <h3 className="text-sm font-semibold">EPIs Monitorados</h3>
-      </div>
-      <div className="flex-1 space-y-1 p-3">
+    <div className="rounded-lg border border-gray-200 bg-gray-50">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+        <h3 className="text-sm font-semibold">EPIs Monitorados:</h3>
         {error && (
-          <p className="mb-2 text-xs text-red-400">{error}</p>
+          <p className="text-xs text-red-400">{error}</p>
         )}
         {epis.map((epi) => (
           <label
             key={epi.key}
-            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-300 transition-colors hover:bg-gray-800"
+            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-200"
           >
             <input
               type="checkbox"
               checked={epi.active}
               onChange={() => handleToggle(epi.key)}
-              className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-green-500 accent-green-500"
+              className="h-4 w-4 rounded border-gray-300 bg-white text-green-500 accent-green-500"
             />
             {epi.label}
           </label>
         ))}
         {epis.length === 0 && !error && (
-          <p className="py-4 text-center text-xs text-gray-500">
-            Carregando EPIs...
-          </p>
+          <p className="text-xs text-gray-500">Carregando EPIs...</p>
         )}
       </div>
     </div>

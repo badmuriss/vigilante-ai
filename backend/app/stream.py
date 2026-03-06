@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 from app.alerts import AlertManager
 from app.camera import CameraManager
-from app.detector import EPI_ALERT_LABELS, SafetyDetector
+from app.detector import EPI_ALERT_LABELS, EPI_LABELS_PT, SafetyDetector
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ class StreamProcessor:
         self._start_time: float = 0.0
         self._active_epis: set[str] = set()
         self._epi_lock = threading.Lock()
+        self._last_missing_set: frozenset[str] = frozenset()
 
     @property
     def active_epis(self) -> set[str]:
@@ -74,9 +75,13 @@ class StreamProcessor:
         if not self._detector.is_loaded:
             self._detector.load_model()
 
-        self._stop_event.clear()
         self._epoch += 1
-        self._camera.start()
+        try:
+            self._camera.start()
+        except Exception:
+            logger.exception("Failed to start camera")
+            raise
+        self._stop_event.clear()
         with self._lock:
             self._start_time = time.monotonic()
         self._thread = threading.Thread(target=self._process_loop, daemon=True)
@@ -131,20 +136,35 @@ class StreamProcessor:
                 active = self._active_epis.copy()
             filtered = [d for d in detections if d.class_name in active] if active else []
 
-            annotated = self._detector.annotate_frame(frame, filtered)
+            # Person proxy: ANY detection means a person is present
+            person_present = len(detections) > 0
+            missing_keys: set[str] = set()
 
-            # Alert logic: check for missing active EPIs
-            if filtered:
-                # Person proxy: at least one active EPI detected
-                detected_keys = {d.class_name for d in filtered}
-                missing_keys = active - detected_keys
-                for key in missing_keys:
-                    alert_label = EPI_ALERT_LABELS.get(key, key)
-                    self._alert_manager.add_alert(alert_label, 0.0, frame)
+            if person_present and active:
+                detected_active = {d.class_name for d in filtered}
+                missing_keys = active - detected_active
+
+                # Consolidated alert: one alert for all missing EPIs
+                current_missing = frozenset(missing_keys)
+                if missing_keys and (
+                    current_missing != self._last_missing_set
+                    or not self._alert_manager._is_on_cooldown("epi_violation")
+                ):
+                    labels = ", ".join(
+                        sorted(EPI_LABELS_PT.get(k, k) for k in missing_keys)
+                    )
+                    self._alert_manager.add_alert(
+                        f"{labels} ausente(s)", 0.0, frame
+                    )
+                self._last_missing_set = current_missing
                 is_compliant = len(missing_keys) == 0
             else:
-                # No active EPIs detected = no person = compliant by default
+                self._last_missing_set = frozenset()
                 is_compliant = True
+
+            annotated = self._detector.annotate_frame(
+                frame, filtered, missing_epis=missing_keys
+            )
 
             self._alert_manager.record_frame(compliant=is_compliant)
 

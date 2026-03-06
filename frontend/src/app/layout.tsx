@@ -27,28 +27,28 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-gray-950 text-gray-100`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-white text-gray-900`}
       >
-        <header className="border-b border-gray-800 bg-gray-900">
+        <header className="border-b border-gray-200 bg-gray-50">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
             <h1 className="text-xl font-bold tracking-tight">Vigilante.AI</h1>
             <nav className="flex gap-6 text-sm font-medium">
               <Link
                 href="/"
-                className="text-gray-300 transition-colors hover:text-white"
+                className="text-gray-600 transition-colors hover:text-gray-900"
               >
                 Monitor
               </Link>
               <Link
                 href="/dashboard"
-                className="text-gray-300 transition-colors hover:text-white"
+                className="text-gray-600 transition-colors hover:text-gray-900"
               >
                 Dashboard
               </Link>
             </nav>
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+        <main className="mx-auto max-w-screen-xl px-4 py-6">{children}</main>
       </body>
     </html>
   );

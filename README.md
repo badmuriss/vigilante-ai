@@ -13,6 +13,24 @@ Sistema de seguranca do trabalho com visao computacional. Detecta EPIs (oculos d
 - Node.js 18+
 - Webcam conectada
 
+## Docker
+
+Para rodar tudo com Docker:
+
+```bash
+docker compose up --build
+```
+
+- Frontend: `http://localhost:3000`
+- Backend/API: `http://localhost:8000/docs`
+
+Para usar a webcam no container, descomente a secao `devices` no `docker-compose.yml`:
+
+```yaml
+devices:
+  - /dev/video0:/dev/video0
+```
+
 ## Setup
 
 ### Backend

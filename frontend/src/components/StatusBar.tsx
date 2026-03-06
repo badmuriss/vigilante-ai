@@ -14,7 +14,7 @@ export default function StatusBar({ status, isRunning }: StatusBarProps) {
         <span
           className={`inline-block h-2.5 w-2.5 rounded-full ${isRunning ? "bg-green-500" : "bg-gray-500"}`}
         />
-        <span className="text-gray-300">
+        <span className="text-gray-600">
           {isRunning ? "Monitorando" : "Parado"}
         </span>
       </div>

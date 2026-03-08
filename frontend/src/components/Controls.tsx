@@ -15,6 +15,17 @@ export default function Controls({ isRunning, onStart, onStop }: ControlsProps) 
   async function handleStart() {
     setLoading(true);
     try {
+      // Solicita permissão da câmera no navegador
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // Fecha o stream imediatamente pois o processamento ocorre no backend
+        stream.getTracks().forEach(track => track.stop());
+      } catch (err) {
+        console.error("Permissão da câmera negada:", err);
+        alert("Para iniciar o monitoramento, você precisa permitir o acesso à câmera no navegador.");
+        return;
+      }
+
       await startStream();
       onStart();
     } catch {

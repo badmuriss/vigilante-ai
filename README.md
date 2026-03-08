@@ -1,85 +1,88 @@
-# Vigilante.AI
+# Vigilante.AI 🛡️
 
-Sistema de seguranca do trabalho com visao computacional. Detecta EPIs (oculos de protecao e capacete) via webcam usando YOLOv8, exibe alertas visuais em tempo real.
+Vigilante.AI is a real-time safety monitoring system powered by Computer Vision. It automatically detects Personal Protective Equipment (PPE) to ensure workplace safety and compliance.
 
-## Arquitetura
+## ✨ Features
 
-- **Backend**: Python + FastAPI + OpenCV + YOLOv8 (Ultralytics)
-- **Frontend**: Next.js 14 (App Router) + Tailwind CSS + Recharts
+- **Real-time PPE Detection**: Detects helmets, safety glasses, and other essential gear using YOLOv8.
+- **Smart Violation Logic**: Integrated face detection (Haar Cascades) acts as a presence proxy to accurately flag missing equipment even when no gear is detected.
+- **Performance Optimized**: Low-latency processing (640x480 resolution / 512px input) designed for CPU inference.
+- **Interactive Dashboard**: Modern Next.js interface with real-time statistics, violation charts, and detailed alert history.
+- **Stability Focused**: Reliable frame-based streaming refresh to prevent browser-side video hangs.
 
-## Pre-requisitos
+## 🏗️ Architecture
 
-- Python 3.11+
-- Node.js 18+
-- Webcam conectada
+- **Backend**: Python 3.11+, FastAPI, OpenCV, YOLOv8 (Ultralytics).
+- **Frontend**: Next.js 14 (App Router), Tailwind CSS, Radix UI, Recharts.
+- **Deployment**: Docker and Docker Compose support.
 
-## Docker
+## 🚀 Getting Started
 
-Para rodar tudo com Docker:
+### Prerequisites
+
+- **Python 3.11+**
+- **Node.js 18+**
+- **Webcam** (USB or Integrated)
+
+### 🐋 Running with Docker
+
+The easiest way to get started is using Docker Compose:
 
 ```bash
 docker compose up --build
 ```
 
-- Frontend: `http://localhost:3000`
-- Backend/API: `http://localhost:8000/docs`
+- **Frontend**: [http://localhost:3000](http://localhost:3000)
+- **Backend API**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-Para usar a webcam no container, descomente a secao `devices` no `docker-compose.yml`:
+> **Note**: To use your webcam inside a container on Linux, ensure the `devices` section in `docker-compose.yml` is uncommented.
 
-```yaml
-devices:
-  - /dev/video0:/dev/video0
-```
+### 🛠️ Manual Setup
 
-## Setup
-
-### Backend
-
+#### Backend
 ```bash
 cd backend
 python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m app.main
 ```
 
-O servidor inicia em `http://localhost:8000`. Documentacao da API em `/docs`.
-
-### Frontend
-
+#### Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-O frontend inicia em `http://localhost:3000`.
+## ⚙️ Configuration
 
-## Configuracao
+Environment variables (prefix `VIGILANTE_`):
 
-Variaveis de ambiente (prefixo `VIGILANTE_`):
-
-| Variavel | Padrao | Descricao |
+| Variable | Default | Description |
 |---|---|---|
-| `VIGILANTE_CAMERA_INDEX` | `0` | Indice da webcam |
-| `VIGILANTE_MODEL_PATH` | `yolov8n.pt` | Caminho do modelo YOLO |
-| `VIGILANTE_CONFIDENCE_THRESHOLD` | `0.5` | Confianca minima para deteccao |
-| `VIGILANTE_ALERT_COOLDOWN_SECONDS` | `10` | Cooldown entre alertas duplicados |
-| `VIGILANTE_PORT` | `8000` | Porta do backend |
+| `VIGILANTE_CAMERA_INDEX` | `0` | System camera index. |
+| `VIGILANTE_MODEL_PATH` | `best.pt` | Path to the trained YOLOv8 model. |
+| `VIGILANTE_CONFIDENCE_THRESHOLD` | `0.5` | Minimum confidence for detections. |
+| `VIGILANTE_CAMERA_WIDTH` | `640` | Capture width. |
+| `VIGILANTE_CAMERA_HEIGHT` | `480` | Capture height. |
 
-## API
+## 📡 API Overview
 
-| Metodo | Endpoint | Descricao |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/status` | Status do sistema (camera, modelo, FPS) |
-| `GET` | `/api/stream` | Stream MJPEG com deteccoes |
-| `POST` | `/api/stream/start` | Iniciar monitoramento |
-| `POST` | `/api/stream/stop` | Parar monitoramento |
-| `GET` | `/api/alerts` | Lista de alertas recentes (max 50) |
-| `DELETE` | `/api/alerts` | Limpar alertas |
-| `GET` | `/api/stats` | Estatisticas da sessao |
+| `GET` | `/api/status` | Current system state (FPS, Model, Camera). |
+| `GET` | `/api/stream/frame` | Single frame JPEG endpoint for the frontend UI. |
+| `GET` | `/api/alerts` | List of the last 50 safety violations. |
+| `GET` | `/api/stats` | Session aggregate statistics. |
 
-## Paginas
+## 📊 Pages
 
-- **/** - Monitoramento: feed de video ao vivo + painel de alertas
-- **/dashboard** - Dashboard com estatisticas e grafico de violacoes
+- **Home (`/`)**: Real-time monitoring feed and active alerts.
+- **Dashboard (`/dashboard`)**: Analytics, performance metrics, and historical trends.
+
+---
+*Built for safety. Engineered for performance.*

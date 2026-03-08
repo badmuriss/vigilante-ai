@@ -2,7 +2,7 @@ from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.alerts import AlertManager
 from app.camera import CameraManager
@@ -54,6 +54,21 @@ def get_stream() -> StreamingResponse:
     )
 
 
+@app.get("/api/stream/frame")
+def get_stream_frame() -> Response:
+    frame = stream_processor.get_jpeg_frame()
+    if not frame:
+        raise HTTPException(status_code=503, detail="No frame available yet")
+    return Response(
+        content=frame,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+
+
 @app.post("/api/stream/start")
 def start_stream() -> dict[str, str | bool]:
     try:
@@ -80,6 +95,8 @@ def get_alerts() -> AlertListResponse:
                 violation_type=a.violation_type,
                 confidence=a.confidence,
                 frame_thumbnail=a.frame_thumbnail,
+                frame_image=a.frame_image,
+                missing_epis=a.missing_epis,
             )
             for a in alerts
         ]

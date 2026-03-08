@@ -11,6 +11,8 @@ class AlertResponse(BaseModel):
     violation_type: str
     confidence: float
     frame_thumbnail: str
+    frame_image: str
+    missing_epis: list[str]
 
 
 class AlertListResponse(BaseModel):

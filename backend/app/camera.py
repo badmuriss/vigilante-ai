@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
 
@@ -31,9 +32,13 @@ class CameraManager:
             logger.warning("Camera is already running")
             return
 
-        self._capture = cv2.VideoCapture(settings.CAMERA_INDEX)
+        if sys.platform.startswith("win"):
+            self._capture = cv2.VideoCapture(settings.CAMERA_INDEX, cv2.CAP_DSHOW)
+        else:
+            self._capture = cv2.VideoCapture(settings.CAMERA_INDEX)
         self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, settings.CAMERA_WIDTH)
         self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, settings.CAMERA_HEIGHT)
+        self._capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         if not self._capture.isOpened():
             self._capture.release()

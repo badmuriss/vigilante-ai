@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 
 from app.alerts import AlertManager
 from app.camera import CameraManager
-from app.detector import EPI_ALERT_LABELS, EPI_LABELS_PT, SafetyDetector
+from app.detector import FACE_CLASS_KEY, EPI_ALERT_LABELS, EPI_LABELS_PT, SafetyDetector
 
 logger = logging.getLogger(__name__)
 
@@ -135,14 +135,19 @@ class StreamProcessor:
             with self._epi_lock:
                 active = self._active_epis.copy()
             filtered = [d for d in detections if d.class_name in active] if active else []
+            visible_faces = [d for d in detections if d.class_name == FACE_CLASS_KEY]
 
-            # Person proxy: ANY detection means a person is present
-            person_present = len(detections) > 0
+            # Person proxy: face detection or any PPE detection implies a person is present
+            person_present = bool(visible_faces or filtered or detections)
             missing_keys: set[str] = set()
 
             if person_present and active:
                 detected_active = {d.class_name for d in filtered}
                 missing_keys = active - detected_active
+                representative_confidence = max(
+                    (d.confidence for d in filtered),
+                    default=max((d.confidence for d in detections), default=0.0),
+                )
 
                 # Consolidated alert: one alert for all missing EPIs
                 current_missing = frozenset(missing_keys)
@@ -150,11 +155,13 @@ class StreamProcessor:
                     current_missing != self._last_missing_set
                     or not self._alert_manager._is_on_cooldown("epi_violation")
                 ):
-                    labels = ", ".join(
-                        sorted(EPI_LABELS_PT.get(k, k) for k in missing_keys)
-                    )
+                    missing_labels = sorted(EPI_LABELS_PT.get(k, k) for k in missing_keys)
+                    labels = ", ".join(missing_labels)
                     self._alert_manager.add_alert(
-                        f"{labels} ausente(s)", 0.0, frame
+                        f"{labels} ausente(s)",
+                        representative_confidence,
+                        frame,
+                        missing_epis=missing_labels,
                     )
                 self._last_missing_set = current_missing
                 is_compliant = len(missing_keys) == 0
@@ -162,8 +169,9 @@ class StreamProcessor:
                 self._last_missing_set = frozenset()
                 is_compliant = True
 
+            display_detections = filtered + visible_faces
             annotated = self._detector.annotate_frame(
-                frame, filtered, missing_epis=missing_keys
+                frame, display_detections, missing_epis=missing_keys
             )
 
             self._alert_manager.record_frame(compliant=is_compliant)

@@ -17,5 +17,7 @@ class Alert:
     violation_type: str
     confidence: float
     frame_thumbnail: str
+    frame_image: str
+    missing_epis: list[str]
     id: str = field(default_factory=lambda: str(uuid4()))
     timestamp: datetime = field(default_factory=datetime.now)

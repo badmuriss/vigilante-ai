@@ -3,21 +3,40 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #f7f4ee;
+  --foreground: #172126;
+  --muted: #5f6b73;
+  --muted-strong: #43505a;
+  --panel: rgba(244, 247, 245, 0.92);
+  --panel-strong: #e7eeea;
+  --border: rgba(141, 156, 145, 0.28);
+  --border-strong: rgba(86, 102, 92, 0.34);
+  --accent: #1d8c5a;
+  --accent-strong: #126742;
+  --danger: #b73f3f;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+::selection {
+  background: rgba(18, 103, 66, 0.18);
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-[28px] border shadow-[0_24px_60px_-38px_rgba(15,23,42,0.55)] backdrop-blur-xl;
+    background-color: rgb(255 255 255 / 0.78);
+    border-color: var(--border);
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.22em];
+    color: var(--accent-strong);
+  }
 }
 
 @layer utilities {

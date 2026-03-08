@@ -36,30 +36,40 @@ export default function EPIPanel() {
   );
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-        <h3 className="text-sm font-semibold">EPIs Monitorados:</h3>
+    <section className="surface-card p-5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div>
+          <p className="eyebrow">Configuração</p>
+          <h3 className="mt-1 text-base font-semibold text-[var(--foreground)]">EPIs monitorados</h3>
+        </div>
         {error && (
-          <p className="text-xs text-red-400">{error}</p>
+          <p className="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700">{error}</p>
         )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-3">
         {epis.map((epi) => (
           <label
             key={epi.key}
-            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-200"
+            className={`flex cursor-pointer items-center gap-3 rounded-full border px-4 py-2.5 text-sm transition ${
+              epi.active
+                ? "border-[var(--accent-strong)] bg-emerald-50 text-[var(--foreground)]"
+                : "border-[var(--border)] bg-white/80 text-[var(--muted-strong)] hover:border-[var(--border-strong)]"
+            }`}
           >
             <input
               type="checkbox"
               checked={epi.active}
               onChange={() => handleToggle(epi.key)}
-              className="h-4 w-4 rounded border-gray-300 bg-white text-green-500 accent-green-500"
+              className="h-4 w-4 rounded border-[var(--border-strong)] bg-white text-[var(--accent-strong)] accent-[var(--accent-strong)]"
             />
             {epi.label}
           </label>
         ))}
         {epis.length === 0 && !error && (
-          <p className="text-xs text-gray-500">Carregando EPIs...</p>
+          <p className="text-sm text-[var(--muted)]">Carregando EPIs...</p>
         )}
       </div>
-    </div>
+    </section>
   );
 }

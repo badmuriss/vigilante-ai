@@ -34,9 +34,12 @@ class AlertManager:
         return elapsed < settings.ALERT_COOLDOWN_SECONDS
 
     @staticmethod
-    def _make_thumbnail(frame: NDArray[np.uint8]) -> str:
-        small = cv2.resize(frame, (160, 120))
-        success, buffer = cv2.imencode(".jpg", small)
+    def _encode_image(frame: NDArray[np.uint8], width: int) -> str:
+        source_height, source_width = frame.shape[:2]
+        target_width = min(width, source_width)
+        target_height = max(1, int(source_height * (target_width / source_width)))
+        resized = cv2.resize(frame, (target_width, target_height))
+        success, buffer = cv2.imencode(".jpg", resized)
         if not success:
             return ""
         return base64.b64encode(buffer.tobytes()).decode("utf-8")
@@ -46,15 +49,19 @@ class AlertManager:
         violation_type: str,
         confidence: float,
         frame: NDArray[np.uint8],
+        missing_epis: list[str] | None = None,
     ) -> Alert | None:
         if self._is_on_cooldown(violation_type):
             return None
 
-        thumbnail = self._make_thumbnail(frame)
+        thumbnail = self._encode_image(frame, 160)
+        frame_image = self._encode_image(frame, 640)
         alert = Alert(
             violation_type=violation_type,
             confidence=confidence,
             frame_thumbnail=thumbnail,
+            frame_image=frame_image,
+            missing_epis=missing_epis or [],
         )
 
         with self._lock:

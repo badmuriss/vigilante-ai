@@ -4,7 +4,11 @@ export interface Alert {
   violation_type: string;
   confidence: number;
   frame_thumbnail: string;
+  frame_image: string;
+  missing_epis: string[];
 }
+
+export type MonitorState = "stopped" | "starting" | "running";
 
 export interface EPIItem {
   key: string;

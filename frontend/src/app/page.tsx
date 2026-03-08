@@ -7,22 +7,25 @@ import Controls from "@/components/Controls";
 import AlertPanel from "@/components/AlertPanel";
 import EPIPanel from "@/components/EPIPanel";
 import { getStatus } from "@/lib/api";
-import type { SystemStatus } from "@/types";
+import type { MonitorState, SystemStatus } from "@/types";
 
 export default function Home() {
-  const [isRunning, setIsRunning] = useState(false);
+  const [monitorState, setMonitorState] = useState<MonitorState>("stopped");
   const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchStatus = () => {
       getStatus()
         .then((s) => {
           setStatus(s);
-          setIsRunning(s.camera_active);
+          setMonitorState((current) =>
+            s.camera_active ? "running" : current === "starting" ? "starting" : "stopped"
+          );
         })
         .catch(() => {
           setStatus(null);
-          setIsRunning(false);
+          setMonitorState((current) => (current === "starting" ? current : "stopped"));
         });
     };
 
@@ -31,32 +34,80 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleStart = useCallback(() => {
-    setIsRunning(true);
+  useEffect(() => {
+    if (monitorState !== "starting") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setMonitorState("stopped");
+      setActionError("A câmera demorou demais para responder. Verifique se o backend e a webcam estão disponíveis.");
+    }, 15000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [monitorState]);
+
+  const handleStartPending = useCallback(() => {
+    setActionError(null);
+    setMonitorState("starting");
+  }, []);
+
+  const handleStartSuccess = useCallback(() => {
+    setActionError(null);
+    setMonitorState("running");
+  }, []);
+
+  const handleActionError = useCallback((message: string) => {
+    setActionError(message);
+    setMonitorState("stopped");
   }, []);
 
   const handleStop = useCallback(() => {
-    setIsRunning(false);
+    setActionError(null);
+    setMonitorState("stopped");
   }, []);
 
   return (
-    <div className="space-y-4">
-      {/* Header row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-semibold">Monitoramento</h2>
-          <StatusBar status={status} isRunning={isRunning} />
-        </div>
-        <Controls isRunning={isRunning} onStart={handleStart} onStop={handleStop} />
-      </div>
+    <div className="space-y-6">
+      <section className="surface-card relative overflow-hidden p-6 sm:p-7">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(18,103,66,0.12),transparent_72%)]" />
+        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="space-y-4">
+            <div>
+              <p className="eyebrow">Centro de monitoramento</p>
+              <h2 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-[var(--foreground)] sm:text-4xl">
+                Operação em tempo real com feedback visual claro desde o primeiro segundo.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)] sm:text-base">
+                Acompanhe o feed, o desempenho do processamento e os incidentes recentes sem perder contexto quando a câmera ainda estiver inicializando.
+              </p>
+            </div>
 
-      {/* Main grid: Video + EPI (left) | Alerts (right) — same height */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1 space-y-4">
-          <VideoFeed isRunning={isRunning} />
+            <StatusBar status={status} monitorState={monitorState} />
+
+            {actionError && (
+              <div className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700">
+                {actionError}
+              </div>
+            )}
+          </div>
+
+          <Controls
+            monitorState={monitorState}
+            onStartPending={handleStartPending}
+            onStartSuccess={handleStartSuccess}
+            onStartError={handleActionError}
+            onStop={handleStop}
+          />
+        </div>
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_360px]">
+        <div className="min-w-0 space-y-6">
+          <VideoFeed monitorState={monitorState} fps={status?.fps ?? 0} />
           <EPIPanel />
         </div>
-        <div className="w-full shrink-0 self-stretch lg:w-80">
+        <div className="min-w-0 xl:sticky xl:top-6 xl:h-[calc(100vh-8.5rem)]">
           <AlertPanel />
         </div>
       </div>

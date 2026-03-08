@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import cv2
@@ -37,6 +38,9 @@ EPI_LABELS_PT: dict[str, str] = {
     "mascara": "Mascara",
 }
 
+FACE_CLASS_KEY = "rosto"
+FACE_LABEL_PT = "Rosto"
+
 # Portuguese alert labels for missing EPI violations
 EPI_ALERT_LABELS: dict[str, str] = {
     "protecao_ocular": "Protecao ocular ausente",
@@ -47,11 +51,15 @@ EPI_ALERT_LABELS: dict[str, str] = {
 GREEN = (100, 220, 100)
 LABEL_BG = (60, 160, 60)
 RED = (0, 0, 255)
+BLUE = (220, 140, 60)
+FACE_LABEL_BG = (190, 110, 40)
 
 
 class SafetyDetector:
     def __init__(self) -> None:
         self._model: YOLO | None = None
+        cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+        self._face_cascade = cv2.CascadeClassifier(str(cascade_path))
 
     @property
     def is_loaded(self) -> bool:
@@ -71,32 +79,64 @@ class SafetyDetector:
         )
 
     def detect(self, frame: NDArray[np.uint8]) -> list[Detection]:
-        if self._model is None:
-            return []
-
-        results: Any = self._model(
-            frame,
-            conf=settings.CONFIDENCE_THRESHOLD,
-            verbose=False,
-        )
-
         detections: list[Detection] = []
-        for result in results:
-            if result.boxes is None:
-                continue
-            for box in result.boxes:
-                class_id = int(box.cls[0].item())
-                confidence = float(box.conf[0].item())
-                x1, y1, x2, y2 = (int(v) for v in box.xyxy[0].tolist())
 
-                # Map class_id to Portuguese key; skip unknown classes
-                class_key = EPI_CLASSES.get(class_id)
-                if class_key is None:
+        if self._model is not None:
+            frame_height, frame_width = frame.shape[:2]
+            longest_side = max(frame_height, frame_width)
+            scale = min(settings.MODEL_INPUT_SIZE / longest_side, 1.0)
+            if scale < 1.0:
+                infer_frame = cv2.resize(
+                    frame,
+                    (int(frame_width * scale), int(frame_height * scale)),
+                    interpolation=cv2.INTER_AREA,
+                )
+            else:
+                infer_frame = frame
+
+            results: Any = self._model(
+                infer_frame,
+                conf=settings.CONFIDENCE_THRESHOLD,
+                verbose=False,
+                imgsz=settings.MODEL_INPUT_SIZE,
+            )
+
+            inv_scale = 1.0 / scale if scale > 0 else 1.0
+            for result in results:
+                if result.boxes is None:
                     continue
+                for box in result.boxes:
+                    class_id = int(box.cls[0].item())
+                    confidence = float(box.conf[0].item())
+                    x1, y1, x2, y2 = (int(v * inv_scale) for v in box.xyxy[0].tolist())
 
-                detections.append(Detection(class_key, confidence, (x1, y1, x2, y2)))
+                    class_key = EPI_CLASSES.get(class_id)
+                    if class_key is None:
+                        continue
+
+                    detections.append(Detection(class_key, confidence, (x1, y1, x2, y2)))
+
+        detections.extend(self._detect_faces(frame))
 
         return detections
+
+    def _detect_faces(self, frame: NDArray[np.uint8]) -> list[Detection]:
+        if self._face_cascade.empty():
+            return []
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        min_size = max(settings.FACE_MIN_SIZE, min(frame.shape[0], frame.shape[1]) // 10)
+        faces = self._face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=settings.FACE_SCALE_FACTOR,
+            minNeighbors=settings.FACE_MIN_NEIGHBORS,
+            minSize=(min_size, min_size),
+        )
+
+        return [
+            Detection(FACE_CLASS_KEY, 0.0, (int(x), int(y), int(x + w), int(y + h)))
+            for x, y, w, h in faces
+        ]
 
     def annotate_frame(
         self,
@@ -106,11 +146,19 @@ class SafetyDetector:
     ) -> NDArray[np.uint8]:
         annotated = frame.copy()
         for det in detections:
-            label = EPI_LABELS_PT.get(det.class_name, det.class_name)
             x1, y1, x2, y2 = det.bbox
-            cv2.rectangle(annotated, (x1, y1), (x2, y2), GREEN, 2)
+            if det.class_name == FACE_CLASS_KEY:
+                label = FACE_LABEL_PT
+                color = BLUE
+                label_bg = FACE_LABEL_BG
+            else:
+                label = EPI_LABELS_PT.get(det.class_name, det.class_name)
+                color = GREEN
+                label_bg = LABEL_BG
+
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-            cv2.rectangle(annotated, (x1, y1 - th - 8), (x1 + tw + 4, y1), LABEL_BG, -1)
+            cv2.rectangle(annotated, (x1, y1 - th - 8), (x1 + tw + 4, y1), label_bg, -1)
             cv2.putText(
                 annotated, label, (x1 + 2, y1 - 4),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,

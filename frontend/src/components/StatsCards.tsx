@@ -17,16 +17,16 @@ function formatDuration(seconds: number): string {
 
 const cards = [
   {
-    label: "Total de Violacoes",
+    label: "Total de violações",
     getValue: (s: SessionStats) => s.total_violations.toString(),
-    color: "text-red-400",
-    bg: "bg-red-500/10 border-red-500/20",
+    color: "text-rose-700",
+    bg: "bg-rose-50 border-rose-100",
   },
   {
-    label: "Tempo de Monitoramento",
+    label: "Tempo de monitoramento",
     getValue: (s: SessionStats) => formatDuration(s.session_duration_seconds),
-    color: "text-blue-400",
-    bg: "bg-blue-500/10 border-blue-500/20",
+    color: "text-sky-700",
+    bg: "bg-sky-50 border-sky-100",
   },
 ] as const;
 
@@ -36,9 +36,9 @@ export default function StatsCards({ stats }: StatsCardsProps) {
       {cards.map((card) => (
         <div
           key={card.label}
-          className={`rounded-lg border p-4 ${card.bg}`}
+          className={`rounded-[22px] border p-5 shadow-[0_18px_35px_-30px_rgba(15,23,42,0.6)] ${card.bg}`}
         >
-          <p className="text-sm text-gray-600">{card.label}</p>
+          <p className="text-sm text-[var(--muted-strong)]">{card.label}</p>
           <p className={`mt-1 text-2xl font-bold ${card.color}`}>
             {stats ? card.getValue(stats) : "--"}
           </p>

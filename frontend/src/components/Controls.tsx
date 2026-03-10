@@ -78,7 +78,7 @@ export default function Controls({
       <button
         onClick={handleStart}
         disabled={loading || !isStopped}
-        className="inline-flex min-w-36 items-center justify-center gap-2 rounded-full bg-[var(--accent-strong)] px-5 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-24px_rgba(18,103,66,0.95)] transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-55"
+        className="inline-flex min-w-36 items-center justify-center gap-2 rounded-full bg-[var(--accent-strong)] px-5 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-24px_rgba(30,64,175,0.85)] transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-55"
       >
         {isStarting ? (
           <LoaderCircle className="h-4 w-4 animate-spin" />

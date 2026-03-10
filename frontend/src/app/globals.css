@@ -11,8 +11,8 @@
   --panel-strong: #e7eeea;
   --border: rgba(141, 156, 145, 0.28);
   --border-strong: rgba(86, 102, 92, 0.34);
-  --accent: #1d8c5a;
-  --accent-strong: #126742;
+  --accent: #2563eb;
+  --accent-strong: #1e40af;
   --danger: #b73f3f;
 }
 
@@ -23,7 +23,7 @@ body {
 }
 
 ::selection {
-  background: rgba(18, 103, 66, 0.18);
+  background: rgba(37, 99, 235, 0.16);
 }
 
 @layer components {

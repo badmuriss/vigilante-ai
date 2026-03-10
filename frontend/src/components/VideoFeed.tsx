@@ -86,7 +86,7 @@ export default function VideoFeed({ monitorState, fps }: VideoFeedProps) {
         </div>
       </div>
 
-      <div className="relative aspect-video overflow-hidden rounded-[22px] border border-[var(--border)] bg-[radial-gradient(circle_at_top,rgba(18,103,66,0.08),transparent_48%),linear-gradient(180deg,#fbfcfb_0%,#eef3f1_100%)]">
+      <div className="relative aspect-video overflow-hidden rounded-[22px] border border-[var(--border)] bg-[linear-gradient(180deg,#fbfcfb_0%,#eef3f1_100%)]">
         {isStopped ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[var(--border)] bg-white/90 shadow-sm">

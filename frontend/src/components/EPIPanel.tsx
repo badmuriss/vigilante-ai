@@ -53,7 +53,7 @@ export default function EPIPanel() {
             key={epi.key}
             className={`flex cursor-pointer items-center gap-3 rounded-full border px-4 py-2.5 text-sm transition ${
               epi.active
-                ? "border-[var(--accent-strong)] bg-emerald-50 text-[var(--foreground)]"
+                ? "border-[var(--accent-strong)] bg-blue-50 text-[var(--foreground)]"
                 : "border-[var(--border)] bg-white/80 text-[var(--muted-strong)] hover:border-[var(--border-strong)]"
             }`}
           >

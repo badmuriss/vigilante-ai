@@ -35,9 +35,9 @@ export default function TeamPage() {
               </div>
               <p className="eyebrow">Equipe</p>
             </div>
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Time responsavel pelo Vigilante.ai</h1>
+            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">Time responsável pelo Vigilante.ai</h1>
             <p className="text-base leading-8 text-[var(--muted)] sm:text-lg">
-              Alunos da FIAP, engajados e focados em desenvolver uma plataforma de monitoramento com visao computacional aplicada a seguranca operacional.
+              Alunos da FIAP, engajados e focados em desenvolver uma plataforma de monitoramento com visão computacional aplicada a seguranca operacional.
             </p>
           </div>
 
@@ -72,7 +72,7 @@ export default function TeamPage() {
               </div>
               <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-white/70 px-4 py-3">
                 <BadgeCheck className="h-4 w-4 shrink-0 text-[var(--accent-strong)]" />
-                <p>Engajado e focado na evolucao do projeto</p>
+                <p>Engajado e focado na evolução do projeto</p>
               </div>
             </div>
           </article>

@@ -19,7 +19,7 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: "Vigilante.AI",
-  description: "Monitoramento de seguranca do trabalho com visao computacional",
+  description: "Monitoramento de segurança do trabalho com visão computacional",
 };
 
 export default function RootLayout({
@@ -74,14 +74,14 @@ export default function RootLayout({
                 <p className="eyebrow">Vigilante.AI</p>
                 <h2 className="text-lg font-semibold tracking-tight">Monitoramento inteligente para ambientes de risco.</h2>
                 <p className="max-w-xl text-sm leading-6 text-[var(--muted)]">
-                  Projeto academico com foco em deteccao de EPIs, leitura operacional em tempo real e consolidacao visual para tomada de decisao.
+                  Projeto acadêmico com foco em detecção de EPIs, leitura operacional em tempo real e consolidação visual para tomada de decisão.
                 </p>
               </div>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Navegacao</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Navegação</p>
                 <div className="mt-4 flex flex-col gap-3 text-sm text-[var(--muted-strong)]">
-                  <Link href="/" className="transition hover:text-[var(--foreground)]">Inicio</Link>
+                  <Link href="/" className="transition hover:text-[var(--foreground)]">Início</Link>
                   <Link href="/monitor" className="transition hover:text-[var(--foreground)]">Monitor</Link>
                   <Link href="/dashboard" className="transition hover:text-[var(--foreground)]">Dashboard</Link>
                   <Link href="/equipe" className="transition hover:text-[var(--foreground)]">Equipe</Link>
@@ -100,7 +100,7 @@ export default function RootLayout({
                       className="h-7 w-auto object-contain"
                     />
                   </div>
-                  <p>Visao computacional aplicada a seguranca do trabalho</p>
+                  <p>Visão computacional aplicada à segurança do trabalho</p>
                   <p>2026</p>
                 </div>
               </div>

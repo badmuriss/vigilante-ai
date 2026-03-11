@@ -14,9 +14,9 @@ import {
 } from "lucide-react";
 
 import dashboardImage from "../assets/Nano_Banana_2_Premium_3D_isometric_render_of_a_sleek__bezel_less_computer_monitor_floating_in_a_dark_4.png";
-import heroImage from "../assets/Nano_Banana_2_Cinematic_wide_shot_of_a_modern_industrial_construction_site_at_dusk__volumetric_light_2.png";
+import ppeImage from "../assets/Nano_Banana_2_Cinematic_wide_shot_of_a_modern_industrial_construction_site_at_dusk__volumetric_light_2.png";
 import performanceImage from "../assets/Nano_Banana_2_Macro_photography_of_a_futuristic_CPU_chip_mounted_on_a_sleek_dark_circuit_board__Neon_2.png";
-import ppeImage from "../assets/Nano_Banana_2_Extreme_close_up_portrait_of_a_factory_worker_s_face_and_shoulders__wearing_a_yellow_h_1.png";
+import heroImage from "../assets/Nano_Banana_2_Extreme_close_up_portrait_of_a_factory_worker_s_face_and_shoulders__wearing_a_yellow_h_1.png";
 import smartLogicImage from "../assets/Nano_Banana_2_A_split_screen_composition_illustrating_a_safety_monitoring_comparison__Left_side__A_w_1.png";
 
 type ShowcaseSection = {
@@ -36,42 +36,42 @@ const showcaseSections: ShowcaseSection[] = [
     eyebrow: "PPE Detection",
     title: "Reconhecimento de EPIs com contexto de campo",
     description:
-      "A leitura visual identifica capacete, colete e outros itens obrigatorios diretamente sobre o operador, reduzindo zonas cinzentas e acelerando a resposta da equipe de seguranca.",
+      "A leitura visual identifica capacete, colete e outros itens obrigatórios diretamente sobre o operador, reduzindo zonas cinzentas e acelerando a resposta da equipe de segurança.",
     highlights: [
-      "Deteccao focada no colaborador em primeiro plano",
-      "Apoio para configuracao dinamica por area operacional",
-      "Sinalizacao imediata de ausencia de protecao obrigatoria",
+      "Detecção focada no colaborador em primeiro plano",
+      "Apoio para configuração dinâmica por área operacional",
+      "Sinalização imediata de ausência de proteção obrigatória",
     ],
     image: ppeImage,
-    alt: "Operador industrial usando equipamentos de protecao individual em ambiente de fabrica.",
+    alt: "Operador industrial usando equipamentos de proteção individual em ambiente de fábrica.",
     icon: ShieldCheck,
     gradient: "from-stone-100 via-white to-amber-50",
   },
   {
     eyebrow: "Smart Logic",
-    title: "Comparacao visual que separa conformidade de risco",
+    title: "Comparação visual que separa conformidade de risco",
     description:
-      "A camada de logica combina deteccao, regras de negocio e contexto da cena para distinguir um operador conforme de uma situacao que exige alerta imediato.",
+      "A camada de lógica combina detecção, regras de negócio e contexto da cena para distinguir um operador conforme de uma situação que exige alerta imediato.",
     highlights: [
-      "Leitura de multiplos objetos na mesma cena",
-      "Regras orientadas por tipo de operacao",
+      "Leitura de múltiplos objetos na mesma cena",
+      "Regras orientadas por tipo de operação",
       "Menos ruido operacional e mais prioridade real",
     ],
     image: smartLogicImage,
-    alt: "Comparacao visual entre uma cena segura e outra com potencial violacao de seguranca.",
+    alt: "Comparação visual entre uma cena segura e outra com potencial violação de segurança.",
     icon: BrainCircuit,
     reverse: true,
     gradient: "from-slate-100 via-white to-stone-50",
   },
   {
     eyebrow: "Dashboard",
-    title: "Visao executiva clara para acompanhar conformidade",
+    title: "Visão executiva clara para acompanhar conformidade",
     description:
-      "O dashboard consolida volume de violacoes, historico da sessao e indicadores de adesao para que supervisao e gestao enxerguem tendencia, risco e oportunidade de ajuste.",
+      "O dashboard consolida volume de violações, histórico da sessão e indicadores de adesão para que supervisão e gestão enxerguem tendência, risco e oportunidade de ajuste.",
     highlights: [
-      "Leitura rapida de metricas criticas",
-      "Historico de eventos para auditoria e analise",
-      "Base visual consistente entre operacao e gestao",
+      "Leitura rápida de métricas críticas",
+      "Histórico de eventos para auditoria e análise",
+      "Base visual consistente entre operação e gestão",
     ],
     image: dashboardImage,
     alt: "Renderizacao de monitor exibindo a interface de um painel de acompanhamento.",
@@ -80,13 +80,13 @@ const showcaseSections: ShowcaseSection[] = [
   },
   {
     eyebrow: "Performance",
-    title: "Inferencia otimizada para operar em tempo real",
+    title: "Inferência otimizada para operar em tempo real",
     description:
-      "A arquitetura foi pensada para manter resposta baixa e processamento continuo, sustentando monitoramento ao vivo sem transformar a seguranca em um gargalo operacional.",
+      "A arquitetura foi pensada para manter resposta baixa e processamento contínuo, sustentando monitoramento ao vivo sem transformar a segurança em um gargalo operacional.",
     highlights: [
-      "Pipeline pronto para baixa latencia",
-      "Capacidade de sustentar analise continua",
-      "Base tecnica preparada para evolucao de modelos",
+      "Pipeline pronto para baixa latência",
+      "Capacidade de sustentar análise contínua",
+      "Base técnica preparada para evolução de modelos",
     ],
     image: performanceImage,
     alt: "Chip de processamento em close representando alta performance computacional.",
@@ -104,18 +104,18 @@ export default function LandingPage() {
           <div className="relative space-y-8">
             <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white/70 px-4 py-2 backdrop-blur-xl">
               <ShieldCheck className="h-4 w-4 text-[var(--accent-strong)]" />
-              <span className="eyebrow !text-[10px]">Seguranca industrial de proxima geracao</span>
+              <span className="eyebrow !text-[10px]">Segurança industrial de próxima geração</span>
             </div>
 
             <div className="space-y-5">
               <h1 className="max-w-4xl text-5xl font-bold tracking-tight text-[var(--foreground)] sm:text-6xl lg:text-7xl">
-                Vigilancia Inteligente
+                Vigilância Inteligente
                 <br />
-                <span className="text-[var(--accent-strong)]">para sua Operacao</span>
+                <span className="text-[var(--accent-strong)]">para sua Operação</span>
               </h1>
 
               <p className="max-w-2xl text-lg leading-8 text-[var(--muted)]">
-                O Vigilante.ai combina visao computacional, regras operacionais e analise em tempo real para detectar ausencia de EPIs e transformar incidentes potenciais em acao imediata.
+                O Vigilante.ai combina visão computacional, regras operacionais e análise em tempo real para detectar ausência de EPIs e transformar incidentes potenciais em ação imediata.
               </p>
             </div>
 
@@ -138,17 +138,17 @@ export default function LandingPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="surface-card p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Cobertura</p>
-                <p className="mt-3 text-2xl font-semibold">EPIs criticos</p>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Capacete, colete e regras adaptaveis por operacao.</p>
+                <p className="mt-3 text-2xl font-semibold">EPIs críticos</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Capacete, colete e regras adaptáveis por operação.</p>
               </div>
               <div className="surface-card p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Resposta</p>
                 <p className="mt-3 text-2xl font-semibold">Alerta imediato</p>
-                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Sinal visual para agir no exato momento da violacao.</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Sinal visual para agir no exato momento da violação.</p>
               </div>
               <div className="surface-card p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--muted)]">Leitura</p>
-                <p className="mt-3 text-2xl font-semibold">Visao consolidada</p>
+                <p className="mt-3 text-2xl font-semibold">Visão consolidada</p>
                 <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Monitor e dashboard conectados na mesma narrativa operacional.</p>
               </div>
             </div>
@@ -177,7 +177,7 @@ export default function LandingPage() {
           </div>
           <h3 className="text-xl font-bold">Monitoramento RT</h3>
           <p className="text-sm leading-relaxed text-[var(--muted)]">
-            Processamento de feed em tempo real para acompanhar operadores, equipamentos e contexto sem depender de observacao manual continua.
+            Processamento de feed em tempo real para acompanhar operadores, equipamentos e contexto sem depender de observação manual contínua.
           </p>
         </div>
 
@@ -185,9 +185,9 @@ export default function LandingPage() {
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-100 bg-rose-50">
             <ShieldAlert className="h-6 w-6 text-rose-600" />
           </div>
-          <h3 className="text-xl font-bold">Alertas Criticos</h3>
+          <h3 className="text-xl font-bold">Alertas Críticos</h3>
           <p className="text-sm leading-relaxed text-[var(--muted)]">
-            Incidentes de conformidade ganham prioridade visual imediata para reduzir tempo de reacao e aumentar rastreabilidade da ocorrencia.
+            Incidentes de conformidade ganham prioridade visual imediata para reduzir tempo de reação e aumentar rastreabilidade da ocorrência.
           </p>
         </div>
 
@@ -195,9 +195,9 @@ export default function LandingPage() {
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50">
             <BarChart3 className="h-6 w-6 text-slate-700" />
           </div>
-          <h3 className="text-xl font-bold">Analise de Dados</h3>
+          <h3 className="text-xl font-bold">Análise de Dados</h3>
           <p className="text-sm leading-relaxed text-[var(--muted)]">
-            Historico, consolidacao e leitura executiva para orientar ajustes operacionais com mais base e menos intuicao.
+            Histórico, consolidação e leitura executiva para orientar ajustes operacionais com mais base e menos intuição.
           </p>
         </div>
       </section>
@@ -248,9 +248,9 @@ export default function LandingPage() {
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl space-y-4">
             <p className="eyebrow">Equipe</p>
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Conheca quem construiu o Vigilante.ai</h2>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Conheça quem construiu o Vigilante.ai</h2>
             <p className="text-base leading-7 text-[var(--muted)] sm:text-lg">
-              A equipe do projeto agora tem uma pagina dedicada, com os integrantes responsaveis pela concepcao, produto e execucao tecnica da plataforma.
+              A equipe do projeto agora tem uma página dedicada, com os integrantes responsáveis pela concepção, produto e execução técnica da plataforma.
             </p>
           </div>
 

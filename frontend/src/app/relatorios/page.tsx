@@ -10,16 +10,25 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  Cell,
 } from "recharts";
 
 import { AppShell } from "@/components/AppShell";
-import { listCameras, listCameraAlerts, getCameraStats, getMe } from "@/lib/api";
-import type { Camera, Alert, SessionStats } from "@/types";
+import AlertDetailsModal from "@/components/AlertDetailsModal";
+import DailyAlertsModal from "@/components/DailyAlertsModal";
+import ExportPdfDialog from "@/components/ExportPdfDialog";
+import { listCameras, listCameraAlerts, getCameraStats, getMe, type AlertStatusFilter } from "@/lib/api";
+import { exportReportPdf } from "@/lib/exportReportPdf";
+import type { Camera, Alert, SessionStats, User } from "@/types";
 
 interface CameraAggregate {
   camera: Camera;
   alerts: Alert[];
   stats: SessionStats | null;
+}
+
+interface AlertWithCamera extends Alert {
+  cameraName: string;
 }
 
 const PERIODS = [
@@ -28,19 +37,46 @@ const PERIODS = [
   { value: "all", label: "Todo o período" },
 ] as const;
 
+const REPORT_ALERT_PAGE_SIZE = 200;
+const REVIEWER_ROLES: User["role"][] = ["admin", "supervisor"];
+
+function dateKey(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+function formatDayLabel(key: string): string {
+  return key.slice(8, 10) + "/" + key.slice(5, 7);
+}
+
+function formatFullDate(key: string): string {
+  const d = new Date(`${key}T00:00:00`);
+  return d.toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export default function RelatoriosPage() {
   const [data, setData] = useState<CameraAggregate[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<typeof PERIODS[number]["value"]>("30");
+  const [alertStatus, setAlertStatus] = useState<AlertStatusFilter>("confirmed");
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
 
   async function load() {
     try {
-      await getMe();
+      const user = await getMe();
+      const status: AlertStatusFilter = REVIEWER_ROLES.includes(user.role) ? "all" : "confirmed";
+      setAlertStatus(status);
       const cameras = await listCameras();
       const results = await Promise.all(
         cameras.map(async (camera) => {
           const [alerts, stats] = await Promise.all([
-            listCameraAlerts(camera.id, 1, 500).catch(() => []),
+            listCameraAlerts(camera.id, 1, REPORT_ALERT_PAGE_SIZE, status).catch(() => []),
             getCameraStats(camera.id).catch(() => null),
           ]);
           return { camera, alerts, stats };
@@ -66,7 +102,7 @@ export default function RelatoriosPage() {
     return Date.now() - days * 86400_000;
   }, [period]);
 
-  const filteredAlerts = useMemo(() => {
+  const filteredAlerts = useMemo<AlertWithCamera[]>(() => {
     return data.flatMap((d) =>
       d.alerts
         .filter((a) => new Date(a.timestamp).getTime() >= cutoff)
@@ -76,6 +112,8 @@ export default function RelatoriosPage() {
 
   // KPIs
   const totalAlerts = filteredAlerts.length;
+  const pendingAlerts = filteredAlerts.filter((a) => a.status === "pending" || a.feedback === null).length;
+  const confirmedAlerts = filteredAlerts.filter((a) => a.status === "confirmed" || a.feedback === "correct").length;
   const activeCameras = data.filter((d) => d.camera.health.online && d.camera.is_running).length;
   const totalCameras = data.length;
   const averageCompliance = useMemo(() => {
@@ -83,27 +121,27 @@ export default function RelatoriosPage() {
     if (valid.length === 0) return null;
     return valid.reduce((a, b) => a + b, 0) / valid.length;
   }, [data]);
-  const totalViolations = useMemo(
-    () => data.reduce((acc, d) => acc + (d.stats?.total_violations ?? 0), 0),
-    [data],
-  );
+  const reviewKpi =
+    alertStatus === "all"
+      ? { label: "Pendentes de revisão", value: pendingAlerts.toString() }
+      : { label: "Violações confirmadas", value: confirmedAlerts.toString() };
 
-  // Bar chart: alerts per day
+  // Bar chart: alerts per day — keep the ISO key for click navigation.
   const alertsByDay = useMemo(() => {
     const map = new Map<string, number>();
     const days = period === "all" ? 30 : parseInt(period, 10);
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      map.set(key, 0);
+      map.set(dateKey(d.toISOString()), 0);
     }
     for (const a of filteredAlerts) {
-      const key = new Date(a.timestamp).toISOString().slice(0, 10);
+      const key = dateKey(a.timestamp);
       if (map.has(key)) map.set(key, (map.get(key) ?? 0) + 1);
     }
     return Array.from(map.entries()).map(([key, count]) => ({
-      day: key.slice(8, 10) + "/" + key.slice(5, 7),
+      key,
+      day: formatDayLabel(key),
       count,
     }));
   }, [filteredAlerts, period]);
@@ -128,10 +166,53 @@ export default function RelatoriosPage() {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [filteredAlerts]);
 
+  const dailyAlerts = useMemo<AlertWithCamera[]>(() => {
+    if (!selectedDay) return [];
+    return filteredAlerts
+      .filter((a) => dateKey(a.timestamp) === selectedDay)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [filteredAlerts, selectedDay]);
+
+  const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? "Período";
+
+  async function handleExport({ includeImages }: { includeImages: boolean }) {
+    const sortedAlerts = [...filteredAlerts].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+    await exportReportPdf({
+      periodLabel,
+      generatedAt: new Date(),
+      includeImages,
+      kpis: [
+        { label: "Total de alertas", value: totalAlerts.toString() },
+        {
+          label: "Conformidade média",
+          value: averageCompliance !== null ? `${formatRate(averageCompliance)}%` : "—",
+        },
+        { label: reviewKpi.label, value: reviewKpi.value },
+        { label: "Câmeras ativas", value: `${activeCameras}/${totalCameras}` },
+      ],
+      byDay: alertsByDay.map(({ day, count }) => ({ day, count })),
+      distribution,
+      topCameras,
+      alerts: sortedAlerts.map((a) => {
+        const d = new Date(a.timestamp);
+        return {
+          date: d.toLocaleDateString("pt-BR"),
+          time: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+          camera: a.cameraName,
+          type: a.violation_type,
+          confidence: a.confidence,
+          thumbnail: includeImages ? a.frame_thumbnail || null : null,
+        };
+      }),
+    });
+  }
+
   return (
     <AppShell
       title="Relatórios e indicadores"
-      subtitle={`Visão consolidada · ${PERIODS.find((p) => p.value === period)?.label.toLowerCase()}`}
+      subtitle={`Visão consolidada · ${periodLabel.toLowerCase()}`}
       actions={
         <>
           <select value={period} onChange={(e) => setPeriod(e.target.value as typeof PERIODS[number]["value"])} className="input">
@@ -139,7 +220,13 @@ export default function RelatoriosPage() {
               <option key={p.value} value={p.value}>{p.label}</option>
             ))}
           </select>
-          <button type="button" className="btn-secondary text-sm" disabled>
+          <button
+            type="button"
+            className="btn-secondary text-sm"
+            onClick={() => setExportOpen(true)}
+            disabled={loading || totalAlerts === 0}
+            title={totalAlerts === 0 ? "Nenhum alerta no período para exportar" : "Exportar relatório em PDF"}
+          >
             <Download size={14} strokeWidth={1.8} />
             Exportar PDF
           </button>
@@ -157,7 +244,7 @@ export default function RelatoriosPage() {
               label="Conformidade média"
               value={averageCompliance !== null ? `${formatRate(averageCompliance)}%` : "—"}
             />
-            <KPI label="Violações registradas" value={totalViolations.toString()} />
+            <KPI label={reviewKpi.label} value={reviewKpi.value} />
             <KPI label="Câmeras ativas" value={`${activeCameras}/${totalCameras}`} />
           </div>
 
@@ -167,6 +254,9 @@ export default function RelatoriosPage() {
               <div>
                 <p className="eyebrow">Atividade</p>
                 <h3 className="mt-1 text-base font-semibold text-text">Alertas por dia</h3>
+                <p className="mt-1 text-xs text-text-muted">
+                  Clique em uma barra para ver os alertas do dia.
+                </p>
               </div>
               <BarChart3 size={18} className="text-text-muted" />
             </div>
@@ -183,8 +273,30 @@ export default function RelatoriosPage() {
                     borderRadius: 10,
                     fontSize: 12,
                   }}
+                  formatter={(value) => {
+                    const n = Number(value ?? 0);
+                    return [`${n} ${n === 1 ? "alerta" : "alertas"}`, "Ocorrências"];
+                  }}
+                  labelFormatter={(label) => `Dia ${label ?? ""}`}
                 />
-                <Bar dataKey="count" fill="#111111" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="count"
+                  fill="#111111"
+                  radius={[4, 4, 0, 0]}
+                  cursor="pointer"
+                  onClick={(entry) => {
+                    const payload = entry as unknown as { key?: string; payload?: { key?: string } };
+                    const key = payload.key ?? payload.payload?.key;
+                    if (key) setSelectedDay(key);
+                  }}
+                >
+                  {alertsByDay.map((entry) => (
+                    <Cell
+                      key={entry.key}
+                      fill={selectedDay === entry.key ? "#dc2626" : "#111111"}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -246,6 +358,28 @@ export default function RelatoriosPage() {
           </div>
         </div>
       )}
+
+      <DailyAlertsModal
+        open={selectedDay !== null}
+        dateLabel={selectedDay ? formatFullDate(selectedDay) : ""}
+        alerts={dailyAlerts}
+        onClose={() => setSelectedDay(null)}
+        onSelectAlert={(alert) => setSelectedAlert(alert)}
+      />
+
+      {selectedAlert && (
+        <AlertDetailsModal
+          alert={selectedAlert}
+          onClose={() => setSelectedAlert(null)}
+        />
+      )}
+
+      <ExportPdfDialog
+        open={exportOpen}
+        alertCount={totalAlerts}
+        onClose={() => setExportOpen(false)}
+        onExport={handleExport}
+      />
     </AppShell>
   );
 }

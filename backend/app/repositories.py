@@ -8,7 +8,7 @@ from typing import Sequence
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from app.db.entities import Alert, Camera, Site, Tenant
+from app.db.entities import Alert, Camera, Site, Tenant, WhatsAppConfig
 
 
 class TenantRepository:
@@ -251,3 +251,54 @@ class AlertRepository:
         stmt = stmt.group_by(bucket).order_by(bucket.asc())
         rows = self._session.execute(stmt).all()
         return [(row.bucket, int(row.count)) for row in rows]
+
+
+class WhatsAppConfigRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_for_tenant(self, tenant_id: str) -> WhatsAppConfig | None:
+        return self._session.scalar(
+            select(WhatsAppConfig).where(WhatsAppConfig.tenant_id == tenant_id)
+        )
+
+    def upsert(
+        self,
+        tenant_id: str,
+        *,
+        enabled: bool,
+        phone_number_id: str | None,
+        access_token_encrypted: str | None,
+        template_name: str | None,
+        template_language: str,
+        recipients: list[str],
+        include_image: bool,
+    ) -> WhatsAppConfig:
+        existing = self.get_for_tenant(tenant_id)
+        if existing is None:
+            cfg = WhatsAppConfig(
+                tenant_id=tenant_id,
+                enabled=enabled,
+                phone_number_id=phone_number_id,
+                access_token_encrypted=access_token_encrypted,
+                template_name=template_name,
+                template_language=template_language,
+                recipients=recipients,
+                include_image=include_image,
+            )
+            self._session.add(cfg)
+            self._session.flush()
+            return cfg
+
+        existing.enabled = enabled
+        existing.phone_number_id = phone_number_id
+        # `access_token_encrypted` is only overwritten when the caller passes
+        # a fresh ciphertext; passing None leaves the previous token in place.
+        if access_token_encrypted is not None:
+            existing.access_token_encrypted = access_token_encrypted
+        existing.template_name = template_name
+        existing.template_language = template_language
+        existing.recipients = recipients
+        existing.include_image = include_image
+        self._session.flush()
+        return existing

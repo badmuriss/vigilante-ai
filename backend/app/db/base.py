@@ -26,11 +26,17 @@ _session_factory: sessionmaker[Session] | None = None
 def get_engine() -> Engine:
     global _engine
     if _engine is None:
+        kwargs: dict[str, object] = {}
+        if settings.DATABASE_URL.startswith("sqlite"):
+            # Required for SQLite to allow multi-threaded access (worker threads)
+            kwargs["connect_args"] = {"check_same_thread": False}
+
         _engine = create_engine(
             settings.DATABASE_URL,
             echo=settings.DB_ECHO,
             pool_pre_ping=True,
             future=True,
+            **kwargs,
         )
     return _engine
 

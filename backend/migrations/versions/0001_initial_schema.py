@@ -16,11 +16,19 @@ down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+GUID_TYPE = postgresql.UUID(as_uuid=False).with_variant(sa.String(36), "sqlite")
+JSON_TYPE = postgresql.JSONB().with_variant(sa.JSON(), "sqlite")
+
+
+def _json_array_default() -> sa.TextClause:
+    if op.get_bind().dialect.name == "postgresql":
+        return sa.text("'[]'::jsonb")
+    return sa.text("'[]'")
 
 def upgrade() -> None:
     op.create_table(
         "tenants",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", GUID_TYPE, primary_key=True),
         sa.Column("name", sa.String(128), nullable=False),
         sa.Column(
             "created_at",
@@ -32,10 +40,10 @@ def upgrade() -> None:
 
     op.create_table(
         "users",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", GUID_TYPE, primary_key=True),
         sa.Column(
             "tenant_id",
-            postgresql.UUID(as_uuid=False),
+            GUID_TYPE,
             sa.ForeignKey("tenants.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -52,10 +60,10 @@ def upgrade() -> None:
 
     op.create_table(
         "sites",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", GUID_TYPE, primary_key=True),
         sa.Column(
             "tenant_id",
-            postgresql.UUID(as_uuid=False),
+            GUID_TYPE,
             sa.ForeignKey("tenants.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -71,10 +79,10 @@ def upgrade() -> None:
 
     op.create_table(
         "cameras",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", GUID_TYPE, primary_key=True),
         sa.Column(
             "site_id",
-            postgresql.UUID(as_uuid=False),
+            GUID_TYPE,
             sa.ForeignKey("sites.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -95,10 +103,10 @@ def upgrade() -> None:
 
     op.create_table(
         "alerts",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", GUID_TYPE, primary_key=True),
         sa.Column(
             "camera_id",
-            postgresql.UUID(as_uuid=False),
+            GUID_TYPE,
             sa.ForeignKey("cameras.id", ondelete="CASCADE"),
             nullable=False,
         ),
@@ -112,9 +120,9 @@ def upgrade() -> None:
         sa.Column("confidence", sa.Float, nullable=False),
         sa.Column(
             "missing_epis",
-            postgresql.JSONB,
+            JSON_TYPE,
             nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
+            server_default=_json_array_default(),
         ),
         sa.Column("frame_path", sa.Text, nullable=True),
         sa.Column("thumbnail_path", sa.Text, nullable=True),
@@ -125,10 +133,10 @@ def upgrade() -> None:
 
     op.create_table(
         "sessions",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", GUID_TYPE, primary_key=True),
         sa.Column(
             "camera_id",
-            postgresql.UUID(as_uuid=False),
+            GUID_TYPE,
             sa.ForeignKey("cameras.id", ondelete="CASCADE"),
             nullable=False,
         ),

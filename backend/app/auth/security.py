@@ -41,8 +41,8 @@ def create_access_token(*, sub: str, tenant_id: str, role: str) -> str:
         minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
     )
     payload: dict[str, Any] = {
-        "sub": sub,
-        "tenant_id": tenant_id,
+        "sub": str(sub),
+        "tenant_id": str(tenant_id),
         "role": role,
         "exp": expire,
         "type": "access",
@@ -55,8 +55,8 @@ def create_refresh_token(*, sub: str, tenant_id: str) -> str:
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
     payload: dict[str, Any] = {
-        "sub": sub,
-        "tenant_id": tenant_id,
+        "sub": str(sub),
+        "tenant_id": str(tenant_id),
         "exp": expire,
         "type": "refresh",
     }

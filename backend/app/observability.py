@@ -76,6 +76,12 @@ stream_online = Gauge(
     labelnames=["camera_id"],
 )
 
+whatsapp_messages_total = Counter(
+    "vigilante_whatsapp_messages_total",
+    "WhatsApp notifications attempted, labelled by outcome",
+    labelnames=["tenant_id", "outcome"],  # outcome: sent | failed | skipped
+)
+
 
 metrics_router = APIRouter()
 

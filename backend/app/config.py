@@ -38,10 +38,8 @@ class Settings(BaseSettings):
     PERSON_MIN_AREA_RATIO: float = 0.005
     PERSON_MIN_ASPECT_RATIO: float = 1.3
 
-    # Persistence
-    DATABASE_URL: str = (
-        "postgresql+psycopg2://vigilante:vigilante_dev@localhost:5432/vigilante"
-    )
+    # Persistence. Docker sets Postgres explicitly; manual local runs use SQLite.
+    DATABASE_URL: str = "sqlite:///./vigilante.db"
     BLOB_STORAGE_PATH: str = "./data/alerts"
     DB_ECHO: bool = False
 
@@ -63,7 +61,19 @@ class Settings(BaseSettings):
     ALERT_JPEG_QUALITY: int = 95
     # Filesystem path where confirmed/rejected feedback exports land for
     # later merging into the YOLO training dataset.
-    RETRAINING_EXPORT_PATH: str = "./ml/data/feedback"
+    RETRAINING_EXPORT_PATH: str = "../ml/data/feedback"
+
+    # Notifications — WhatsApp Cloud API
+    # Fernet key (base64, 32 bytes) used to encrypt per-tenant Meta access
+    # tokens at rest. Generate with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Empty disables encryption-at-rest (notifier will refuse to run).
+    NOTIFY_ENCRYPTION_KEY: str = ""
+    # Pin this per deployment and update intentionally when moving Graph API
+    # versions in Meta Developer settings.
+    WHATSAPP_API_BASE: str = "https://graph.facebook.com/v22.0"
+    WHATSAPP_HTTP_TIMEOUT: float = 10.0
+    WHATSAPP_DISPATCH_WORKERS: int = 4
 
     model_config = {"env_prefix": "VIGILANTE_"}
 

@@ -107,3 +107,32 @@ export interface ProbeResponse {
   ok: boolean;
   message: string;
 }
+
+// --- Notifications ---
+
+export interface WhatsAppConfig {
+  enabled: boolean;
+  phone_number_id: string | null;
+  has_token: boolean;
+  template_name: string | null;
+  template_language: string;
+  recipients: string[];
+  include_image: boolean;
+}
+
+export interface WhatsAppConfigUpdate {
+  enabled: boolean;
+  phone_number_id: string | null;
+  // `null` keeps the existing token, "" clears it, any string replaces it.
+  access_token: string | null;
+  template_name: string | null;
+  template_language: string;
+  recipients: string[];
+  include_image: boolean;
+}
+
+export interface WhatsAppTestResult {
+  ok: boolean;
+  message_id?: string | null;
+  error?: string | null;
+}

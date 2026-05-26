@@ -81,8 +81,10 @@ def register(
     session.refresh(user)
 
     return TokenPair(
-        access_token=create_access_token(sub=user.id, tenant_id=user.tenant_id, role=user.role),
-        refresh_token=create_refresh_token(sub=user.id, tenant_id=user.tenant_id),
+        access_token=create_access_token(
+            sub=str(user.id), tenant_id=str(user.tenant_id), role=user.role
+        ),
+        refresh_token=create_refresh_token(sub=str(user.id), tenant_id=str(user.tenant_id)),
     )
 
 
@@ -95,8 +97,10 @@ def login(req: LoginRequest, session: Session = Depends(get_session)) -> TokenPa
             detail="Invalid credentials",
         )
     return TokenPair(
-        access_token=create_access_token(sub=user.id, tenant_id=user.tenant_id, role=user.role),
-        refresh_token=create_refresh_token(sub=user.id, tenant_id=user.tenant_id),
+        access_token=create_access_token(
+            sub=str(user.id), tenant_id=str(user.tenant_id), role=user.role
+        ),
+        refresh_token=create_refresh_token(sub=str(user.id), tenant_id=str(user.tenant_id)),
     )
 
 
@@ -117,8 +121,12 @@ def refresh(
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     return TokenPair(
-        access_token=create_access_token(sub=user.id, tenant_id=user.tenant_id, role=user.role),
-        refresh_token=create_refresh_token(sub=user.id, tenant_id=user.tenant_id),
+        access_token=create_access_token(
+            sub=str(user.id), tenant_id=str(user.tenant_id), role=user.role
+        ),
+        refresh_token=create_refresh_token(
+            sub=str(user.id), tenant_id=str(user.tenant_id)
+        ),
     )
 
 
@@ -131,9 +139,9 @@ def me(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return MeResponse(
-        id=user.id,
+        id=str(user.id),
         email=user.email,
         role=user.role,
-        tenant_id=user.tenant_id,
+        tenant_id=str(user.tenant_id),
         created_at=user.created_at,
     )

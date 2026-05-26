@@ -102,14 +102,15 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
 
-export VIGILANTE_DATABASE_URL="postgresql+psycopg2://vigilante:vigilante@localhost:5432/vigilante"
 export VIGILANTE_JWT_SECRET="troque-isto"
 
-alembic upgrade head
 python -m app.main
 ```
 
-Precisa de Postgres 14+ rodando local. Modelo YOLO em `backend/best.pt` (já versionado).
+Por padrão, o setup manual usa SQLite em `backend/vigilante.db`. Para usar
+Postgres fora do Docker, defina `VIGILANTE_DATABASE_URL` e rode
+`alembic upgrade head` antes de iniciar. Modelo YOLO em `backend/best.pt`
+(já versionado).
 
 ### Frontend
 
@@ -134,16 +135,68 @@ Todas usam prefixo `VIGILANTE_`.
 
 | Variável | Default | Descrição |
 |---|---|---|
-| `VIGILANTE_DATABASE_URL` | sqlite fallback | Connection string do Postgres |
+| `VIGILANTE_DATABASE_URL` | `sqlite:///./vigilante.db` | Banco local por padrão; Docker sobrescreve para Postgres |
 | `VIGILANTE_JWT_SECRET` | _obrigatório_ | Chave de assinatura dos tokens |
 | `VIGILANTE_BLOB_STORAGE_PATH` | `backend/data/alerts` | Onde os frames de alerta são salvos |
-| `VIGILANTE_RETRAINING_EXPORT_PATH` | `ml/data/feedback` | Destino de amostras YOLO de feedback |
+| `VIGILANTE_RETRAINING_EXPORT_PATH` | `../ml/data/feedback` | Destino de amostras YOLO de feedback |
 | `VIGILANTE_ALLOW_OPEN_REGISTRATION` | `0` | Permite registro sem convite |
 | `VIGILANTE_MODEL_PATH` | `best.pt` | Pesos YOLO carregados pelo detector |
 | `VIGILANTE_CONFIDENCE_THRESHOLD` | `0.15` | Confiança mínima de detecção |
 | `VIGILANTE_ALERT_COOLDOWN_SECONDS` | `10` | Throttle entre alertas iguais por câmera |
+| `VIGILANTE_NOTIFY_ENCRYPTION_KEY` | _vazio_ | Chave Fernet para criptografar tokens WhatsApp em repouso (ver seção abaixo) |
+| `VIGILANTE_WHATSAPP_API_BASE` | `https://graph.facebook.com/v22.0` | Endpoint Meta Cloud API versionado; ajuste quando mudar a versão do app |
+| `VIGILANTE_WHATSAPP_HTTP_TIMEOUT` | `10.0` | Timeout (s) das chamadas Meta |
+| `VIGILANTE_WHATSAPP_DISPATCH_WORKERS` | `4` | Threads no pool de envio assíncrono |
 
 Config por câmera (lista de EPIs, cores) fica em `/api/cameras/{id}/config/...`.
+
+## Notificações WhatsApp (Meta Cloud API)
+
+Alertas marcados como **confirmados** pelo revisor podem ser despachados em
+segundo plano para um ou mais números via Meta WhatsApp Cloud API (oficial).
+A configuração é por tenant e o token Meta é guardado criptografado.
+
+Comece copiando `.env.example` para `.env` e preenchendo apenas os valores do
+seu ambiente. O arquivo de exemplo não deve conter tokens reais.
+
+### 1. Gerar a chave de criptografia (uma vez por deployment)
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Cole o valor em `VIGILANTE_NOTIFY_ENCRYPTION_KEY`. Rotacionar essa chave
+invalida todos os tokens já armazenados.
+
+### 2. Criar app + número no Meta Business
+
+1. `https://developers.facebook.com` → criar app do tipo **Business** com
+   produto **WhatsApp**.
+2. Em WhatsApp → API Setup, anote o **Phone Number ID** (numérico, 15 dígitos).
+3. Gere um **token permanente** via System User do Meta Business (Settings
+   → Users → System Users → Add → Generate Token com permissão `whatsapp_business_messaging`).
+4. Aprove um **Template** do tipo `Utility` com:
+   - Header (opcional): tipo `Image` — necessário se você quer anexar a foto.
+   - Body: 3 variáveis `{{1}} {{2}} {{3}}` correspondendo a câmera, EPIs
+     faltando e timestamp formatado.
+
+   Exemplo de body para template `safety_alert_pt` (pt_BR):
+
+   > Alerta confirmado em {{1}}: {{2}}. Registrado em {{3}}.
+
+### 3. Configurar pelo painel
+
+Em `/configuracoes` (somente admin), preencha Phone Number ID, Token,
+nome do template, idioma, destinatários (E.164 — ex: `+5511999999999`)
+e habilite. Use **Enviar teste** para validar a credencial antes de
+ligar o switch.
+
+### 4. Fluxo runtime
+
+- Reviewer marca alerta como `correct` em `POST /api/alerts/{id}/feedback`.
+- API responde imediatamente; um worker daemon faz o upload da imagem
+  (se habilitado) e dispara o template para cada destinatário.
+- Métrica Prometheus: `vigilante_whatsapp_messages_total{outcome=sent|failed|skipped}`.
 
 ## API resumida
 

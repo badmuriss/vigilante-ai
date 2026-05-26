@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Mail, Shield, Building, Cpu, type LucideIcon } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import { WhatsAppNotificationsCard } from "@/components/WhatsAppNotificationsCard";
 import { getMe } from "@/lib/api";
 import type { User } from "@/types";
 
@@ -41,11 +42,13 @@ export default function ConfiguracoesPage() {
               <Field icon={Cpu} label="Modelo" value="YOLOv8s · helmet + vest" />
               <Field icon={Cpu} label="Inferência" value="GPU local · ~700 fps" />
             </dl>
-            <p className="mt-6 text-xs text-text-muted">
-              Configurações avançadas (notificação WhatsApp, regras por câmera, exportação automática) virão na Fase 5
-              do projeto.
-            </p>
           </section>
+
+          {user?.role === "admin" && (
+            <div className="lg:col-span-2">
+              <WhatsAppNotificationsCard />
+            </div>
+          )}
         </div>
       )}
     </AppShell>

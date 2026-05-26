@@ -13,6 +13,7 @@ from app.config import settings
 from app.db.base import dispose_engine, get_session
 from app.db.entities import Camera as CameraEntity
 from app.detector import EPI_CLASSES, EPI_LABELS_PT, SafetyDetector
+from app.notifications.router import router as notifications_router
 from app.observability import configure_logging, metrics_router
 from app.registry import (
     SOURCE_KIND_LOCAL,
@@ -45,6 +46,7 @@ from app.schemas import (
     is_hex_color,
 )
 from app.services.retraining_exporter import RetrainingExporter
+from app.services.whatsapp_notifier import WhatsAppNotifier
 from app.sources import probe_rtsp
 from app.storage import LocalBlobStore
 
@@ -56,6 +58,7 @@ detector = SafetyDetector()
 blob_store = LocalBlobStore(settings.BLOB_STORAGE_PATH)
 registry = StreamRegistry(detector, blob_store)
 retraining_exporter = RetrainingExporter(blob_store)
+whatsapp_notifier = WhatsAppNotifier(blob_store)
 
 
 @asynccontextmanager
@@ -65,19 +68,69 @@ async def lifespan(app: FastAPI):
     # pulling in alembic for the demo. Each statement is safe to re-run.
     from sqlalchemy import text as _sql_text
     from app.db.base import get_engine
-    with get_engine().begin() as conn:
-        conn.execute(_sql_text(
-            "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS feedback VARCHAR(32)"
-        ))
-        conn.execute(_sql_text(
-            "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS feedback_at TIMESTAMPTZ"
-        ))
-        conn.execute(_sql_text(
-            "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS frame_raw_path TEXT"
-        ))
-        conn.execute(_sql_text(
-            "ALTER TABLE alerts ADD COLUMN IF NOT EXISTS detected_bboxes JSONB"
-        ))
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        is_sqlite = engine.dialect.name == "sqlite"
+        if is_sqlite:
+            from app.db.base import Base
+
+            Base.metadata.create_all(bind=conn)
+
+        def add_column_if_not_exists(table: str, column: str, col_type: str) -> None:
+            if is_sqlite:
+                existing = conn.execute(
+                    _sql_text(f"PRAGMA table_info({table})")
+                ).fetchall()
+                if not any(row[1] == column for row in existing):
+                    conn.execute(
+                        _sql_text(
+                            f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+                        )
+                    )
+                return
+            conn.execute(
+                _sql_text(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}"
+                )
+            )
+
+        add_column_if_not_exists("alerts", "feedback", "VARCHAR(32)")
+        add_column_if_not_exists(
+            "alerts", "feedback_at", "DATETIME" if is_sqlite else "TIMESTAMPTZ"
+        )
+        add_column_if_not_exists("alerts", "frame_raw_path", "TEXT")
+        add_column_if_not_exists(
+            "alerts", "detected_bboxes", "JSON" if is_sqlite else "JSONB"
+        )
+
+        # WhatsApp notifications config (1 row per tenant). Created
+        # additively so existing databases stay valid without Alembic.
+        dt_type = "DATETIME" if is_sqlite else "TIMESTAMPTZ"
+        bool_default_false = "0" if is_sqlite else "FALSE"
+        bool_default_true = "1" if is_sqlite else "TRUE"
+        uuid_type = "CHAR(36)" if is_sqlite else "UUID"
+        json_type = "JSON" if is_sqlite else "JSONB"
+        conn.execute(
+            _sql_text(
+                f"""
+            CREATE TABLE IF NOT EXISTS whatsapp_configs (
+                id {uuid_type} PRIMARY KEY,
+                tenant_id {uuid_type} NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+                enabled BOOLEAN NOT NULL DEFAULT {bool_default_false},
+                phone_number_id VARCHAR(64),
+                access_token_encrypted TEXT,
+                template_name VARCHAR(128),
+                template_language VARCHAR(16) NOT NULL DEFAULT 'pt_BR',
+                recipients {json_type} NOT NULL DEFAULT '[]',
+                include_image BOOLEAN NOT NULL DEFAULT {bool_default_true},
+                created_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            )
+        )
+
         # One-time backfill: alerts created before the soft-alert feature
         # rollout are treated as confirmed incidents (the prior behaviour).
         # New alerts (timestamp >= cutoff) stay pending until reviewed.
@@ -93,6 +146,7 @@ async def lifespan(app: FastAPI):
     _ensure_legacy_camera()
     yield
     registry.shutdown()
+    whatsapp_notifier.shutdown(wait=False)
     dispose_engine()
 
 
@@ -108,6 +162,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(metrics_router)
+app.include_router(notifications_router)
 
 
 def _ensure_legacy_camera() -> CameraEntity:
@@ -146,7 +201,7 @@ def _to_camera_response(entity: CameraEntity) -> CameraResponse:
         last_error=health.last_error if health else None,
     )
     return CameraResponse(
-        id=entity.id,
+        id=str(entity.id),
         name=entity.name,
         source_kind=entity.source_kind,  # type: ignore[arg-type]
         rtsp_url=entity.rtsp_url,
@@ -398,7 +453,7 @@ def _alert_to_response(
         if data:
             raw_b64 = base64.b64encode(data).decode("utf-8")
     return AlertResponse(
-        id=alert_id,
+        id=str(alert_id),
         timestamp=timestamp,
         violation_type=violation_type,
         confidence=confidence,
@@ -479,6 +534,17 @@ def post_alert_feedback(
         logging.getLogger(__name__).exception(
             "Retraining export failed for alert %s", alert_id
         )
+    # Confirmed-alert WhatsApp notification — dispatched to a daemon
+    # thread pool so the operator's feedback round-trip never blocks on
+    # Meta's API.
+    if a.feedback == "correct":
+        try:
+            whatsapp_notifier.notify_async(a)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "WhatsApp notify dispatch failed for alert %s", alert_id
+            )
     return _alert_to_response(
         alert_id=a.id,
         timestamp=a.timestamp,

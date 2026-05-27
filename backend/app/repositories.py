@@ -8,7 +8,7 @@ from typing import Sequence
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from app.db.entities import Alert, Camera, Site, Tenant, WhatsAppConfig
+from app.db.entities import Alert, Camera, Site, TeamsConfig, Tenant, WhatsAppConfig
 
 
 class TenantRepository:
@@ -300,5 +300,47 @@ class WhatsAppConfigRepository:
         existing.template_language = template_language
         existing.recipients = recipients
         existing.include_image = include_image
+        self._session.flush()
+        return existing
+
+
+class TeamsConfigRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def get_for_tenant(self, tenant_id: str) -> TeamsConfig | None:
+        return self._session.scalar(
+            select(TeamsConfig).where(TeamsConfig.tenant_id == tenant_id)
+        )
+
+    def upsert(
+        self,
+        tenant_id: str,
+        *,
+        enabled: bool,
+        webhook_url_encrypted: str | None,
+        channel_name: str | None,
+        notify_on_confirmed: bool,
+    ) -> TeamsConfig:
+        existing = self.get_for_tenant(tenant_id)
+        if existing is None:
+            cfg = TeamsConfig(
+                tenant_id=tenant_id,
+                enabled=enabled,
+                webhook_url_encrypted=webhook_url_encrypted,
+                channel_name=channel_name,
+                notify_on_confirmed=notify_on_confirmed,
+            )
+            self._session.add(cfg)
+            self._session.flush()
+            return cfg
+
+        existing.enabled = enabled
+        # `webhook_url_encrypted` mirrors WhatsApp token semantics:
+        # None keeps the previous value, "" clears it, a ciphertext replaces it.
+        if webhook_url_encrypted is not None:
+            existing.webhook_url_encrypted = webhook_url_encrypted
+        existing.channel_name = channel_name
+        existing.notify_on_confirmed = notify_on_confirmed
         self._session.flush()
         return existing

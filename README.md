@@ -147,6 +147,9 @@ Todas usam prefixo `VIGILANTE_`.
 | `VIGILANTE_WHATSAPP_API_BASE` | `https://graph.facebook.com/v22.0` | Endpoint Meta Cloud API versionado; ajuste quando mudar a versão do app |
 | `VIGILANTE_WHATSAPP_HTTP_TIMEOUT` | `10.0` | Timeout (s) das chamadas Meta |
 | `VIGILANTE_WHATSAPP_DISPATCH_WORKERS` | `4` | Threads no pool de envio assíncrono |
+| `VIGILANTE_TEAMS_HTTP_TIMEOUT` | `10.0` | Timeout (s) das chamadas Microsoft Teams Workflows |
+| `VIGILANTE_TEAMS_DISPATCH_WORKERS` | `4` | Threads no pool de envio assíncrono para Teams |
+| `VIGILANTE_PUBLIC_APP_URL` | _vazio_ | URL pública opcional usada no botão "Abrir no Vigilante.AI" dos cards Teams |
 
 Config por câmera (lista de EPIs, cores) fica em `/api/cameras/{id}/config/...`.
 
@@ -198,6 +201,35 @@ ligar o switch.
   (se habilitado) e dispara o template para cada destinatário.
 - Métrica Prometheus: `vigilante_whatsapp_messages_total{outcome=sent|failed|skipped}`.
 
+## Notificações Microsoft Teams (Workflows)
+
+Alertas confirmados também podem ser enviados para um canal ou chat do
+Microsoft Teams via **Teams Workflows**. A URL do webhook é tratada como
+segredo e armazenada criptografada por tenant com a mesma chave
+`VIGILANTE_NOTIFY_ENCRYPTION_KEY`.
+
+### 1. Criar o workflow no Teams
+
+1. No Teams, abra o canal ou chat de destino.
+2. Acesse **Workflows** e escolha um template de webhook recebido, como
+   "Send webhook alerts to a channel".
+3. Salve o workflow e copie a URL gerada.
+4. Em `/configuracoes`, cole a URL no card "Notificações via Microsoft Teams",
+   informe um nome amigável para o canal e use **Enviar teste**.
+
+Observação: Workflows ficam vinculados ao usuário dono do fluxo. Em ambiente
+de cliente, adicione co-owners no Power Automate para evitar que a integração
+pare se o dono perder acesso.
+
+### 2. Fluxo runtime
+
+- Reviewer marca alerta como `correct` em `POST /api/alerts/{id}/feedback`.
+- API responde imediatamente; um worker daemon envia um Adaptive Card para o
+  webhook configurado.
+- Se `VIGILANTE_PUBLIC_APP_URL` estiver definido, o card inclui um botão para
+  abrir o histórico no Vigilante.AI.
+- Métrica Prometheus: `vigilante_teams_messages_total{outcome=sent|failed|skipped}`.
+
 ## API resumida
 
 ### Auth
@@ -222,6 +254,12 @@ ligar o switch.
 ### Stats e config
 - `GET /api/cameras/{id}/stats`
 - `GET|POST /api/cameras/{id}/config/epis`, `/config/colors`
+
+### Notificações
+- `GET|PUT /api/notifications/whatsapp`
+- `POST /api/notifications/whatsapp/test`
+- `GET|PUT /api/notifications/teams`
+- `POST /api/notifications/teams/test`
 
 ### Legado de câmera única (deprecado, faz proxy para câmera default)
 - `/api/status`, `/api/stream`, `/api/stream/start|stop`, `/api/alerts`, `/api/stats`, `/api/config/epis|colors`

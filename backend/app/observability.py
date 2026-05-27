@@ -82,6 +82,12 @@ whatsapp_messages_total = Counter(
     labelnames=["tenant_id", "outcome"],  # outcome: sent | failed | skipped
 )
 
+teams_messages_total = Counter(
+    "vigilante_teams_messages_total",
+    "Microsoft Teams notifications attempted, labelled by outcome",
+    labelnames=["tenant_id", "outcome"],  # outcome: sent | failed | skipped
+)
+
 
 metrics_router = APIRouter()
 

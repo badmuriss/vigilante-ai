@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Info, Plus, Send, Trash2 } from "lucide-react";
+import { ChevronDown, Info, Plus, Send, Trash2 } from "lucide-react";
 
 import {
   getWhatsAppConfig,
@@ -65,6 +65,7 @@ export function WhatsAppNotificationsCard() {
   const [newRecipient, setNewRecipient] = useState("");
   const [testRecipient, setTestRecipient] = useState("");
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     getWhatsAppConfig()
@@ -187,7 +188,19 @@ export function WhatsAppNotificationsCard() {
   return (
     <section className="card overflow-hidden">
       {/* Header */}
-      <header className="flex items-start justify-between gap-4 p-6">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
+        aria-expanded={expanded}
+        className="flex w-full cursor-pointer items-start justify-between gap-4 p-6 text-left transition-colors hover:bg-bg-sunken/60"
+      >
         <div className="flex min-w-0 items-start gap-3">
           <span
             className="grid h-11 w-11 shrink-0 place-items-center rounded-[var(--radius-md)]"
@@ -206,13 +219,39 @@ export function WhatsAppNotificationsCard() {
             </p>
           </div>
         </div>
-        <Switch
-          checked={form.enabled}
-          onChange={(v) => setForm({ ...form, enabled: v })}
-          label="Habilitado"
-        />
-      </header>
+        <div
+          className="flex shrink-0 items-center gap-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Switch
+            checked={form.enabled}
+            onChange={(v) => setForm({ ...form, enabled: v })}
+            label="Habilitado"
+          />
+          <button
+            type="button"
+            aria-label={expanded ? "Recolher" : "Expandir"}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded((v) => !v);
+            }}
+            className="grid h-7 w-7 place-items-center rounded-full text-text-muted hover:bg-bg-sunken"
+          >
+            <ChevronDown
+              size={18}
+              strokeWidth={1.8}
+              className="transition-transform"
+              style={{
+                transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                transitionDuration: "var(--dur)",
+              }}
+            />
+          </button>
+        </div>
+      </div>
 
+      {expanded && (
+        <>
       {/* Conexão */}
       <Section title="Conexão" description="Credenciais Meta WhatsApp Cloud API.">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -421,6 +460,8 @@ export function WhatsAppNotificationsCard() {
           </button>
         </div>
       </div>
+        </>
+      )}
 
       {feedback && (
         <p
@@ -471,28 +512,25 @@ function Switch({
   label: string;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-2.5">
-      <span className="text-xs font-medium text-text-muted">{label}</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors"
+      style={{
+        background: checked ? "var(--accent)" : "var(--border-strong)",
+        transitionDuration: "var(--dur-fast)",
+      }}
+    >
+      <span
+        className="inline-block h-4 w-4 rounded-full bg-white shadow-sm"
         style={{
-          background: checked ? "var(--accent)" : "var(--border-strong)",
-          transitionDuration: "var(--dur-fast)",
+          transform: checked ? "translateX(18px)" : "translateX(2px)",
+          transition: "transform var(--dur) var(--ease)",
         }}
-      >
-        <span
-          className="inline-block h-4 w-4 rounded-full bg-white shadow-sm"
-          style={{
-            transform: checked ? "translateX(18px)" : "translateX(2px)",
-            transition: "transform var(--dur) var(--ease)",
-          }}
-        />
-      </button>
-    </div>
+      />
+    </button>
   );
 }

@@ -130,6 +130,13 @@ def test_get_returns_disabled_defaults_when_no_config(client_admin: TestClient) 
     assert body["has_token"] is False
     assert body["recipients"] == []
 
+    teams_res = client_admin.get("/api/notifications/teams")
+    assert teams_res.status_code == 200
+    teams_body = teams_res.json()
+    assert teams_body["enabled"] is False
+    assert teams_body["has_webhook_url"] is False
+    assert teams_body["notify_on_confirmed"] is True
+
 
 def test_put_then_get_round_trip_redacts_token(client_admin: TestClient) -> None:
     payload = {
@@ -157,6 +164,29 @@ def test_put_then_get_round_trip_redacts_token(client_admin: TestClient) -> None
     assert res2.json()["has_token"] is True
 
 
+def test_put_teams_then_get_round_trip_redacts_webhook(
+    client_admin: TestClient,
+) -> None:
+    payload = {
+        "enabled": False,
+        "webhook_url": "https://example.webhook.office.com/workflows/abc",
+        "channel_name": "Seguranca",
+        "notify_on_confirmed": True,
+    }
+    res = client_admin.put("/api/notifications/teams", json=payload)
+    assert res.status_code == 200, res.text
+    assert "example.webhook.office.com" not in res.text
+    body = res.json()
+    assert body["has_webhook_url"] is True
+    assert body["channel_name"] == "Seguranca"
+    assert body["notify_on_confirmed"] is True
+
+    res2 = client_admin.get("/api/notifications/teams")
+    assert res2.status_code == 200
+    assert "example.webhook.office.com" not in res2.text
+    assert res2.json()["has_webhook_url"] is True
+
+
 def test_put_rejects_enabling_without_token(client_admin: TestClient) -> None:
     res = client_admin.put(
         "/api/notifications/whatsapp",
@@ -172,6 +202,35 @@ def test_put_rejects_enabling_without_token(client_admin: TestClient) -> None:
     )
     assert res.status_code == 400
     assert "token" in res.text.lower()
+
+
+def test_put_teams_rejects_enabling_without_webhook(
+    client_admin: TestClient,
+) -> None:
+    res = client_admin.put(
+        "/api/notifications/teams",
+        json={
+            "enabled": True,
+            "webhook_url": None,
+            "channel_name": "Seguranca",
+            "notify_on_confirmed": True,
+        },
+    )
+    assert res.status_code == 400
+    assert "webhook" in res.text.lower()
+
+
+def test_put_teams_rejects_non_https_webhook(client_admin: TestClient) -> None:
+    res = client_admin.put(
+        "/api/notifications/teams",
+        json={
+            "enabled": False,
+            "webhook_url": "http://example.test/hook",
+            "channel_name": "Seguranca",
+            "notify_on_confirmed": True,
+        },
+    )
+    assert res.status_code == 422
 
 
 def test_put_rejects_enabling_without_recipients(client_admin: TestClient) -> None:
@@ -240,8 +299,37 @@ def test_put_with_null_token_keeps_existing(client_admin: TestClient) -> None:
     assert res.json()["recipients"] == ["+5511888888888"]
 
 
+def test_put_teams_with_null_webhook_keeps_existing(
+    client_admin: TestClient,
+) -> None:
+    client_admin.put(
+        "/api/notifications/teams",
+        json={
+            "enabled": False,
+            "webhook_url": "https://example.webhook.office.com/workflows/first",
+            "channel_name": "Seguranca",
+            "notify_on_confirmed": True,
+        },
+    )
+    res = client_admin.put(
+        "/api/notifications/teams",
+        json={
+            "enabled": True,
+            "webhook_url": None,
+            "channel_name": "CIPA",
+            "notify_on_confirmed": False,
+        },
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["enabled"] is True
+    assert res.json()["has_webhook_url"] is True
+    assert res.json()["channel_name"] == "CIPA"
+    assert res.json()["notify_on_confirmed"] is False
+
+
 def test_viewer_cannot_access(client_viewer: TestClient) -> None:
     assert client_viewer.get("/api/notifications/whatsapp").status_code == 403
+    assert client_viewer.get("/api/notifications/teams").status_code == 403
     assert (
         client_viewer.put(
             "/api/notifications/whatsapp",
@@ -253,6 +341,18 @@ def test_viewer_cannot_access(client_viewer: TestClient) -> None:
                 "template_language": "pt_BR",
                 "recipients": [],
                 "include_image": True,
+            },
+        ).status_code
+        == 403
+    )
+    assert (
+        client_viewer.put(
+            "/api/notifications/teams",
+            json={
+                "enabled": False,
+                "webhook_url": None,
+                "channel_name": None,
+                "notify_on_confirmed": True,
             },
         ).status_code
         == 403

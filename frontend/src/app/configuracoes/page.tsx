@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Mail, Shield, Building, Cpu, type LucideIcon } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import { TeamsNotificationsCard } from "@/components/TeamsNotificationsCard";
 import { WhatsAppNotificationsCard } from "@/components/WhatsAppNotificationsCard";
 import { getMe } from "@/lib/api";
 import type { User } from "@/types";
@@ -46,7 +47,12 @@ export default function ConfiguracoesPage() {
             </section>
           </div>
 
-          {user?.role === "admin" && <WhatsAppNotificationsCard />}
+          {user?.role === "admin" && (
+            <>
+              <WhatsAppNotificationsCard />
+              <TeamsNotificationsCard />
+            </>
+          )}
         </div>
       )}
     </AppShell>

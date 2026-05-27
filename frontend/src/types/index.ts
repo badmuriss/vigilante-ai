@@ -136,3 +136,24 @@ export interface WhatsAppTestResult {
   message_id?: string | null;
   error?: string | null;
 }
+
+export interface TeamsConfig {
+  enabled: boolean;
+  has_webhook_url: boolean;
+  channel_name: string | null;
+  notify_on_confirmed: boolean;
+}
+
+export interface TeamsConfigUpdate {
+  enabled: boolean;
+  // `null` keeps the existing webhook URL, "" clears it, any string replaces it.
+  webhook_url: string | null;
+  channel_name: string | null;
+  notify_on_confirmed: boolean;
+}
+
+export interface TeamsTestResult {
+  ok: boolean;
+  status_code?: number | null;
+  error?: string | null;
+}

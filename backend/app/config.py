@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     WHATSAPP_API_BASE: str = "https://graph.facebook.com/v22.0"
     WHATSAPP_HTTP_TIMEOUT: float = 10.0
     WHATSAPP_DISPATCH_WORKERS: int = 4
+    # Notifications — Microsoft Teams Workflows webhook
+    TEAMS_HTTP_TIMEOUT: float = 10.0
+    TEAMS_DISPATCH_WORKERS: int = 4
+    # Optional public app URL used in Teams cards for "Abrir alerta".
+    # Example: https://vigilante.example.com
+    PUBLIC_APP_URL: str = ""
 
     model_config = {"env_prefix": "VIGILANTE_"}
 

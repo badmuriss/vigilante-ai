@@ -46,6 +46,7 @@ from app.schemas import (
     is_hex_color,
 )
 from app.services.retraining_exporter import RetrainingExporter
+from app.services.teams_notifier import TeamsNotifier
 from app.services.whatsapp_notifier import WhatsAppNotifier
 from app.sources import probe_rtsp
 from app.storage import LocalBlobStore
@@ -59,6 +60,7 @@ blob_store = LocalBlobStore(settings.BLOB_STORAGE_PATH)
 registry = StreamRegistry(detector, blob_store)
 retraining_exporter = RetrainingExporter(blob_store)
 whatsapp_notifier = WhatsAppNotifier(blob_store)
+teams_notifier = TeamsNotifier()
 
 
 @asynccontextmanager
@@ -130,6 +132,22 @@ async def lifespan(app: FastAPI):
             """
             )
         )
+        conn.execute(
+            _sql_text(
+                f"""
+            CREATE TABLE IF NOT EXISTS teams_configs (
+                id {uuid_type} PRIMARY KEY,
+                tenant_id {uuid_type} NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+                enabled BOOLEAN NOT NULL DEFAULT {bool_default_false},
+                webhook_url_encrypted TEXT,
+                channel_name VARCHAR(128),
+                notify_on_confirmed BOOLEAN NOT NULL DEFAULT {bool_default_true},
+                created_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            )
+        )
 
         # One-time backfill: alerts created before the soft-alert feature
         # rollout are treated as confirmed incidents (the prior behaviour).
@@ -147,6 +165,7 @@ async def lifespan(app: FastAPI):
     yield
     registry.shutdown()
     whatsapp_notifier.shutdown(wait=False)
+    teams_notifier.shutdown(wait=False)
     dispose_engine()
 
 
@@ -544,6 +563,13 @@ def post_alert_feedback(
             import logging
             logging.getLogger(__name__).exception(
                 "WhatsApp notify dispatch failed for alert %s", alert_id
+            )
+        try:
+            teams_notifier.notify_async(a)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Teams notify dispatch failed for alert %s", alert_id
             )
     return _alert_to_response(
         alert_id=a.id,

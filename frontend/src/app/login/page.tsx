@@ -5,7 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
-import { login, register } from "@/lib/api";
+import { getAccessToken, login, register } from "@/lib/api";
 
 type Mode = "login" | "register";
 
@@ -20,8 +20,13 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Already logged in -> skip the login screen, go straight to the platform.
+    if (getAccessToken()) {
+      router.replace("/cameras");
+      return;
+    }
     if (searchParams.get("mode") === "register") setMode("register");
-  }, [searchParams]);
+  }, [router, searchParams]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

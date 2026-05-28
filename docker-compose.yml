@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: vigilante
@@ -31,6 +31,13 @@ services:
       - VIGILANTE_WHATSAPP_API_BASE=${VIGILANTE_WHATSAPP_API_BASE:-https://graph.facebook.com/v22.0}
       - VIGILANTE_WHATSAPP_HTTP_TIMEOUT=${VIGILANTE_WHATSAPP_HTTP_TIMEOUT:-10.0}
       - VIGILANTE_WHATSAPP_DISPATCH_WORKERS=${VIGILANTE_WHATSAPP_DISPATCH_WORKERS:-4}
+      - VIGILANTE_DEEPSEEK_API_KEY=${VIGILANTE_DEEPSEEK_API_KEY:-}
+      - VIGILANTE_OPENROUTER_API_KEY=${VIGILANTE_OPENROUTER_API_KEY:-}
+      - VIGILANTE_OPENAI_API_KEY=${VIGILANTE_OPENAI_API_KEY:-}
+      - VIGILANTE_HF_TOKEN=${VIGILANTE_HF_TOKEN:-}
+      - VIGILANTE_LLM_MODEL=${VIGILANTE_LLM_MODEL:-deepseek-v4-pro}
+      - VIGILANTE_EMBEDDING_MODEL=${VIGILANTE_EMBEDDING_MODEL:-text-embedding-3-small}
+      - VIGILANTE_KB_SEED_ON_STARTUP=${VIGILANTE_KB_SEED_ON_STARTUP:-1}
     group_add:
       - "44"  # video group for camera access
     devices:

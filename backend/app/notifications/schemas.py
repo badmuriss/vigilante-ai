@@ -21,6 +21,9 @@ class WhatsAppConfigResponse(BaseModel):
     template_language: str
     recipients: list[str]
     include_image: bool
+    # Inbound conversational webhook. Secrets never returned — only presence.
+    has_webhook_verify_token: bool = False
+    has_app_secret: bool = False
 
 
 class WhatsAppConfigUpdateRequest(BaseModel):
@@ -33,6 +36,9 @@ class WhatsAppConfigUpdateRequest(BaseModel):
     template_language: str = Field(default="pt_BR", max_length=16)
     recipients: list[str] = Field(default_factory=list)
     include_image: bool = True
+    # Inbound webhook credentials (same None/""/value semantics as access_token).
+    webhook_verify_token: str | None = Field(default=None, max_length=512)
+    app_secret: str | None = Field(default=None, max_length=512)
 
     @field_validator("recipients")
     @classmethod

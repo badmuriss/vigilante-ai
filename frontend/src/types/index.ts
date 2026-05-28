@@ -118,6 +118,8 @@ export interface WhatsAppConfig {
   template_language: string;
   recipients: string[];
   include_image: boolean;
+  has_webhook_verify_token: boolean;
+  has_app_secret: boolean;
 }
 
 export interface WhatsAppConfigUpdate {
@@ -129,6 +131,9 @@ export interface WhatsAppConfigUpdate {
   template_language: string;
   recipients: string[];
   include_image: boolean;
+  // `null` keeps existing, "" clears, any string replaces.
+  webhook_verify_token?: string | null;
+  app_secret?: string | null;
 }
 
 export interface WhatsAppTestResult {
@@ -156,4 +161,68 @@ export interface TeamsTestResult {
   ok: boolean;
   status_code?: number | null;
   error?: string | null;
+}
+
+// --- Chat / Assistente ---
+
+export interface Citation {
+  idx: number;
+  doc_title: string;
+  snippet: string;
+  document_id?: string | null;
+}
+
+export interface ToolCallSummary {
+  tool: string;
+  args: Record<string, unknown>;
+}
+
+export type ChatRole = "user" | "assistant" | "tool";
+
+export interface ChartPoint {
+  label: string;
+  value: number;
+}
+
+export interface ChartArtifact {
+  kind: "chart";
+  chart_type: "bar" | "line" | "pie";
+  title: string;
+  data: ChartPoint[];
+}
+
+export interface ChatMessage {
+  role: ChatRole;
+  content: string;
+  citations?: Citation[];
+  tool_calls?: ToolCallSummary[];
+  charts?: ChartArtifact[];
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  channel: "ui" | "whatsapp";
+  updated_at: string;
+  last_message_preview: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  title: string | null;
+  channel: "ui" | "whatsapp";
+  updated_at: string;
+  messages: ChatMessage[];
+}
+
+export interface SendChatResponse {
+  conversation_id: string;
+  assistant_message: {
+    role: "assistant";
+    content: string;
+    citations: Citation[];
+    tool_calls: ToolCallSummary[];
+    charts: ChartArtifact[];
+  };
+  latency_ms: number;
 }

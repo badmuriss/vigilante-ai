@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
+import { MarketingAuthButtons } from "@/components/MarketingAuthButtons";
+
 interface MarketingShellProps {
   children: ReactNode;
 }
@@ -24,12 +26,7 @@ export function MarketingShell({ children }: MarketingShellProps) {
             </Link>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/login" className="btn-ghost text-[15px]">
-              Entrar
-            </Link>
-            <Link href="/login?mode=register" className="btn-primary text-[15px]">
-              Criar conta
-            </Link>
+            <MarketingAuthButtons />
           </div>
         </div>
       </header>

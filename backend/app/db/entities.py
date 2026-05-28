@@ -224,6 +224,14 @@ class WhatsAppConfig(Base):
         JSON_TYPE, nullable=False, default=list
     )
     include_image: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Conversational HUB (inbound webhook). Both encrypted with Fernet so the
+    # row never holds plain-text Meta secrets. `phone_number_id` already exists
+    # above; we add a unique index in migration 0004 so the webhook handler
+    # can resolve tenant from the Meta payload.
+    webhook_verify_token_encrypted: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    app_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -235,6 +243,122 @@ class WhatsAppConfig(Base):
     )
 
     tenant: Mapped[Tenant] = relationship(back_populates="whatsapp_config")
+
+
+class Conversation(Base):
+    """Stateless agent conversation, keyed by (tenant, channel, user_identifier).
+
+    `channel` is `ui` (web chat) or `whatsapp` (inbound webhook). The agent
+    history lives inline in `messages` as a JSON array of `{role, content, ...}`
+    objects so a single SELECT loads the full thread. Multi-tenant by FK to
+    `tenants`. `user_id` is set when the channel is `ui` (linked to the
+    authenticated user) and NULL when the channel is `whatsapp`.
+    """
+
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    user_identifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(
+        GUID(), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    messages: Mapped[list[dict]] = mapped_column(
+        JSON_TYPE, nullable=False, default=list
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index("ix_conversations_tenant_updated", "tenant_id", "updated_at"),
+        Index(
+            "ux_conversations_channel_user",
+            "tenant_id",
+            "channel",
+            "user_identifier",
+            unique=True,
+        ),
+    )
+
+
+class KBDocument(Base):
+    """Source document indexed in the RAG knowledge base.
+
+    `tenant_id` NULL means "global" (visible to every tenant) — used for the
+    seeded Vigilante.AI manual + NR-6/NR-18 excerpts. Tenant-uploaded docs
+    have a concrete `tenant_id`. Idempotent on `(tenant_id, content_hash)`.
+    """
+
+    __tablename__ = "kb_documents"
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(
+        GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(256), nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    doc_metadata: Mapped[dict] = mapped_column(
+        "metadata", JSON_TYPE, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    chunks: Mapped[list["KBChunk"]] = relationship(
+        back_populates="document", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_kb_documents_tenant", "tenant_id"),
+    )
+
+
+class KBChunk(Base):
+    """A retrievable slice of a `KBDocument` with embedding + FTS vector.
+
+    `embedding` uses pgvector (1536-dim, OpenAI text-embedding-3-small).
+    `tsv` is a generated Portuguese tsvector — created by the migration so
+    SQLAlchemy doesn't try to materialise it on inserts.
+    """
+
+    __tablename__ = "kb_chunks"
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str | None] = mapped_column(
+        GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True
+    )
+    document_id: Mapped[str] = mapped_column(
+        GUID(),
+        ForeignKey("kb_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_metadata: Mapped[dict] = mapped_column(
+        "metadata", JSON_TYPE, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    document: Mapped[KBDocument] = relationship(back_populates="chunks")
+
+    # The vector column is declared in the migration (pgvector type) and
+    # the tsvector column is generated. We access them through raw SQL in
+    # `app/kb/retrieval.py` rather than via the ORM so the ORM model stays
+    # backend-agnostic (sqlite for tests has neither column).
 
 
 class TeamsConfig(Base):

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Camera, History, BarChart3, Settings, LogOut } from "lucide-react";
+import { Camera, History, BarChart3, Settings, LogOut, MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearTokens, getMe } from "@/lib/api";
@@ -10,6 +10,7 @@ import type { User } from "@/types";
 
 const NAV = [
   { href: "/cameras", label: "Câmeras ao vivo", icon: Camera },
+  { href: "/assistente", label: "Assistente", icon: MessageSquare },
   { href: "/historico", label: "Histórico", icon: History },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
   { href: "/configuracoes", label: "Configurações", icon: Settings },

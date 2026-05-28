@@ -432,6 +432,98 @@ class WhatsAppNotifier:
         return None
 
 
+# --- Inbound conversational replies (free-form, used by the chat webhook) ---
+#
+# Within the 24h customer-service window (opened when the user messages us),
+# Meta allows free-form `type: "text"` replies — no pre-approved template
+# needed. The chat webhook uses these to answer inbound questions.
+
+
+def _load_config_by_id(config_id: str) -> WhatsAppConfig | None:
+    with session_scope() as session:
+        cfg = session.scalar(
+            select(WhatsAppConfig).where(WhatsAppConfig.id == config_id)
+        )
+        if cfg is not None:
+            session.expunge(cfg)
+        return cfg
+
+
+def send_session_text(config_id: str, *, to: str, body: str) -> dict[str, Any]:
+    """Send a free-form WhatsApp text reply. Returns {ok, message_id|error}."""
+    cfg = _load_config_by_id(config_id)
+    if cfg is None:
+        return {"ok": False, "error": "config not found"}
+    if not cfg.phone_number_id or not cfg.access_token_encrypted:
+        return {"ok": False, "error": "incomplete WhatsApp config"}
+    if not encryption_available():
+        return {"ok": False, "error": "encryption key not configured"}
+    try:
+        token = decrypt_secret(cfg.access_token_encrypted)
+    except SecretDecryptError as exc:
+        return {"ok": False, "error": str(exc)}
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": _to_meta_recipient(to),
+        "type": "text",
+        "text": {"body": body},
+    }
+    try:
+        with httpx.Client(
+            timeout=settings.WHATSAPP_HTTP_TIMEOUT, base_url=settings.WHATSAPP_API_BASE
+        ) as client:
+            resp = client.post(
+                f"/{cfg.phone_number_id}/messages",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        return {"ok": False, "error": f"network: {exc}"}
+    if resp.status_code >= 400:
+        return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text[:500]}"}
+    try:
+        messages = resp.json().get("messages") or []
+    except ValueError:
+        return {"ok": False, "error": "non-JSON response"}
+    if not messages:
+        return {"ok": False, "error": "no message id returned"}
+    return {"ok": True, "message_id": messages[0].get("id")}
+
+
+def download_media(media_id: str, config_id: str) -> bytes | None:
+    """Download inbound media bytes (e.g. a voice note) by Meta media id."""
+    cfg = _load_config_by_id(config_id)
+    if cfg is None or not cfg.access_token_encrypted or not encryption_available():
+        return None
+    try:
+        token = decrypt_secret(cfg.access_token_encrypted)
+    except SecretDecryptError:
+        return None
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        with httpx.Client(
+            timeout=settings.WHATSAPP_HTTP_TIMEOUT, base_url=settings.WHATSAPP_API_BASE
+        ) as client:
+            meta = client.get(f"/{media_id}", headers=headers)
+            if meta.status_code >= 400:
+                return None
+            url = meta.json().get("url")
+            if not url:
+                return None
+            # The media URL is on a lookaside host; fetch with the same token.
+            blob = client.get(url, headers=headers)
+            if blob.status_code >= 400:
+                return None
+            return blob.content
+    except httpx.HTTPError:
+        logger.exception("WhatsApp media download failed for %s", media_id)
+        return None
+
+
 def is_e164(value: str) -> bool:
     """Light E.164 validation: leading '+', country code 1-9, 7-15 digits total."""
     if not value or not value.startswith("+"):

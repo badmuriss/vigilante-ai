@@ -88,6 +88,53 @@ teams_messages_total = Counter(
     labelnames=["tenant_id", "outcome"],  # outcome: sent | failed | skipped
 )
 
+# --- Conversational HUB metrics ---
+
+chat_messages_total = Counter(
+    "vigilante_chat_messages_total",
+    "Chat messages processed by the agent",
+    labelnames=["channel", "role"],  # channel: ui | whatsapp; role: user | assistant
+)
+
+chat_latency_seconds = Histogram(
+    "vigilante_chat_latency_seconds",
+    "Agent loop end-to-end latency",
+    labelnames=["channel"],
+    buckets=(0.5, 1.0, 2.0, 4.0, 8.0, 15.0, 30.0, 60.0),
+)
+
+chat_tool_calls_total = Counter(
+    "vigilante_chat_tool_calls_total",
+    "Tool invocations by the agent",
+    labelnames=["tool", "status"],  # status: ok | error
+)
+
+kb_retrievals_total = Counter(
+    "vigilante_kb_retrievals_total",
+    "Knowledge-base hybrid retrievals executed",
+)
+
+kb_rerank_failures_total = Counter(
+    "vigilante_kb_rerank_failures_total",
+    "Reranker fallbacks (HF API unavailable or errored)",
+)
+
+llm_fallback_total = Counter(
+    "vigilante_llm_fallback_total",
+    "DeepSeek -> OpenRouter failovers",
+)
+
+wa_webhook_received_total = Counter(
+    "vigilante_wa_webhook_received_total",
+    "Inbound WhatsApp webhook deliveries",
+    labelnames=["kind"],  # kind: text | audio | unsupported | unknown_tenant
+)
+
+wa_signature_failures_total = Counter(
+    "vigilante_wa_signature_failures_total",
+    "WhatsApp webhook HMAC signature mismatches",
+)
+
 
 metrics_router = APIRouter()
 

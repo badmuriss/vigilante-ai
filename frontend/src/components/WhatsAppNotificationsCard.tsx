@@ -41,6 +41,10 @@ interface FormState {
   recipients: string[];
   accessToken: string | null;
   accessTokenDirty: boolean;
+  webhookVerifyToken: string | null;
+  webhookVerifyTokenDirty: boolean;
+  appSecret: string | null;
+  appSecretDirty: boolean;
 }
 
 function configToForm(cfg: WhatsAppConfig): FormState {
@@ -53,6 +57,10 @@ function configToForm(cfg: WhatsAppConfig): FormState {
     recipients: cfg.recipients,
     accessToken: TOKEN_SENTINEL_UNCHANGED,
     accessTokenDirty: false,
+    webhookVerifyToken: TOKEN_SENTINEL_UNCHANGED,
+    webhookVerifyTokenDirty: false,
+    appSecret: TOKEN_SENTINEL_UNCHANGED,
+    appSecretDirty: false,
   };
 }
 
@@ -62,6 +70,8 @@ export function WhatsAppNotificationsCard() {
   const [testing, setTesting] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
   const [hasToken, setHasToken] = useState(false);
+  const [hasWebhookToken, setHasWebhookToken] = useState(false);
+  const [hasAppSecret, setHasAppSecret] = useState(false);
   const [newRecipient, setNewRecipient] = useState("");
   const [testRecipient, setTestRecipient] = useState("");
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -72,6 +82,8 @@ export function WhatsAppNotificationsCard() {
       .then((cfg) => {
         setForm(configToForm(cfg));
         setHasToken(cfg.has_token);
+        setHasWebhookToken(cfg.has_webhook_verify_token);
+        setHasAppSecret(cfg.has_app_secret);
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : "Erro ao carregar";
@@ -115,6 +127,16 @@ export function WhatsAppNotificationsCard() {
           ? TOKEN_SENTINEL_CLEAR
           : form.accessToken
         : TOKEN_SENTINEL_UNCHANGED;
+      const verifyPayload = form.webhookVerifyTokenDirty
+        ? form.webhookVerifyToken === ""
+          ? TOKEN_SENTINEL_CLEAR
+          : form.webhookVerifyToken
+        : TOKEN_SENTINEL_UNCHANGED;
+      const appSecretPayload = form.appSecretDirty
+        ? form.appSecret === ""
+          ? TOKEN_SENTINEL_CLEAR
+          : form.appSecret
+        : TOKEN_SENTINEL_UNCHANGED;
       const cfg = await updateWhatsAppConfig({
         enabled: form.enabled,
         phone_number_id: form.phoneNumberId || null,
@@ -123,9 +145,13 @@ export function WhatsAppNotificationsCard() {
         template_language: form.templateLanguage || "pt_BR",
         recipients: form.recipients,
         include_image: form.includeImage,
+        webhook_verify_token: verifyPayload,
+        app_secret: appSecretPayload,
       });
       setForm(configToForm(cfg));
       setHasToken(cfg.has_token);
+      setHasWebhookToken(cfg.has_webhook_verify_token);
+      setHasAppSecret(cfg.has_app_secret);
       setFeedback({ kind: "ok", text: "Configuração salva." });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao salvar";
@@ -393,6 +419,72 @@ export function WhatsAppNotificationsCard() {
             Nenhum destinatário cadastrado.
           </p>
         )}
+      </Section>
+
+      {/* Webhook — assistente conversacional (inbound) */}
+      <Section
+        title="Assistente via WhatsApp (inbound)"
+        description="Permite receber perguntas pelo WhatsApp e respondê-las com o mesmo assistente da plataforma. Webhook URL: /api/webhooks/whatsapp"
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <label className="label">Verify Token</label>
+              {hasWebhookToken && !form.webhookVerifyTokenDirty && (
+                <span className="text-[10px] uppercase tracking-wider text-text-subtle">
+                  armazenado
+                </span>
+              )}
+            </div>
+            <input
+              className="input mt-1"
+              type="password"
+              value={form.webhookVerifyToken ?? ""}
+              placeholder={
+                hasWebhookToken ? "•••••••• (clique para substituir)" : "Token que você define no Meta"
+              }
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  webhookVerifyToken: e.target.value,
+                  webhookVerifyTokenDirty: true,
+                })
+              }
+            />
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-baseline justify-between gap-2">
+              <label className="label">App Secret</label>
+              {hasAppSecret && !form.appSecretDirty && (
+                <span className="text-[10px] uppercase tracking-wider text-text-subtle">
+                  armazenado
+                </span>
+              )}
+            </div>
+            <input
+              className="input mt-1"
+              type="password"
+              value={form.appSecret ?? ""}
+              placeholder={
+                hasAppSecret ? "•••••••• (clique para substituir)" : "App Secret do app Meta"
+              }
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  appSecret: e.target.value,
+                  appSecretDirty: true,
+                })
+              }
+            />
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-text-muted">
+          No Meta Developer Console, configure a Webhook URL apontando para{" "}
+          <span className="mono-num">/api/webhooks/whatsapp</span> com o mesmo
+          Verify Token e inscreva o campo <em>messages</em>. O App Secret valida a
+          assinatura HMAC de cada mensagem recebida.
+        </p>
       </Section>
 
       {/* Pré-requisitos */}

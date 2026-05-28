@@ -13,8 +13,11 @@ from app.config import settings
 from app.db.base import dispose_engine, get_session
 from app.db.entities import Camera as CameraEntity
 from app.detector import EPI_CLASSES, EPI_LABELS_PT, SafetyDetector
+from app.chat.router import router as chat_router
+from app.kb.router import router as kb_router
 from app.notifications.router import router as notifications_router
 from app.observability import configure_logging, metrics_router
+from app.webhooks.whatsapp import router as wa_webhook_router
 from app.registry import (
     SOURCE_KIND_LOCAL,
     SOURCE_KIND_RTSP,
@@ -162,6 +165,7 @@ async def lifespan(app: FastAPI):
         )
     registry.load_from_db()
     _ensure_legacy_camera()
+    _seed_knowledge_base()
     yield
     registry.shutdown()
     whatsapp_notifier.shutdown(wait=False)
@@ -182,6 +186,29 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(metrics_router)
 app.include_router(notifications_router)
+app.include_router(chat_router)
+app.include_router(kb_router)
+app.include_router(wa_webhook_router)
+
+
+def _seed_knowledge_base() -> None:
+    """Ingest backend/knowledge/*.md as global KB docs on startup (idempotent)."""
+    if not settings.KB_SEED_ON_STARTUP:
+        return
+    try:
+        from pathlib import Path
+
+        from app.db.base import session_scope
+        from app.kb.ingest import seed_global_kb
+
+        knowledge_dir = Path(__file__).resolve().parent.parent / settings.KB_KNOWLEDGE_DIR
+        with session_scope() as session:
+            seed_global_kb(session, knowledge_dir)
+            session.commit()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("KB seed on startup failed")
 
 
 def _ensure_legacy_camera() -> CameraEntity:

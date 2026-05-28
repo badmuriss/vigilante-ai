@@ -3,8 +3,11 @@ import type {
   Camera,
   CameraCreatePayload,
   CameraUpdatePayload,
+  ConversationDetail,
+  ConversationSummary,
   EPIConfig,
   ProbeResponse,
+  SendChatResponse,
   SessionStats,
   SystemStatus,
   TeamsConfig,
@@ -396,6 +399,38 @@ export async function testTeams(): Promise<TeamsTestResult> {
   });
   if (!res.ok) throw await buildApiError(res, "Teams test failed");
   return res.json();
+}
+
+// --- Chat / Assistente ---
+
+export async function sendChatMessage(payload: {
+  message: string;
+  conversation_id?: string;
+}): Promise<SendChatResponse> {
+  const res = await apiFetch("/api/chat/messages", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await buildApiError(res, "Falha ao enviar mensagem");
+  return res.json();
+}
+
+export async function listConversations(): Promise<ConversationSummary[]> {
+  const res = await apiFetch("/api/chat/conversations");
+  if (!res.ok) throw await buildApiError(res, "Falha ao listar conversas");
+  const data = await res.json();
+  return data.conversations;
+}
+
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  const res = await apiFetch(`/api/chat/conversations/${id}`);
+  if (!res.ok) throw await buildApiError(res, "Conversa não encontrada");
+  return res.json();
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const res = await apiFetch(`/api/chat/conversations/${id}`, { method: "DELETE" });
+  if (!res.ok) throw await buildApiError(res, "Falha ao remover conversa");
 }
 
 export function cameraFrameUrl(cameraId: string): string {

@@ -273,6 +273,8 @@ class WhatsAppConfigRepository:
         template_language: str,
         recipients: list[str],
         include_image: bool,
+        webhook_verify_token_encrypted: str | None = None,
+        app_secret_encrypted: str | None = None,
     ) -> WhatsAppConfig:
         existing = self.get_for_tenant(tenant_id)
         if existing is None:
@@ -285,6 +287,10 @@ class WhatsAppConfigRepository:
                 template_language=template_language,
                 recipients=recipients,
                 include_image=include_image,
+                webhook_verify_token_encrypted=(
+                    webhook_verify_token_encrypted or None
+                ),
+                app_secret_encrypted=app_secret_encrypted or None,
             )
             self._session.add(cfg)
             self._session.flush()
@@ -300,6 +306,13 @@ class WhatsAppConfigRepository:
         existing.template_language = template_language
         existing.recipients = recipients
         existing.include_image = include_image
+        # Same None/""/value semantics for the webhook secrets.
+        if webhook_verify_token_encrypted is not None:
+            existing.webhook_verify_token_encrypted = (
+                webhook_verify_token_encrypted or None
+            )
+        if app_secret_encrypted is not None:
+            existing.app_secret_encrypted = app_secret_encrypted or None
         self._session.flush()
         return existing
 

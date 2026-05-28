@@ -81,6 +81,39 @@ class Settings(BaseSettings):
     # Example: https://vigilante.example.com
     PUBLIC_APP_URL: str = ""
 
+    # --- Conversational HUB (chat + RAG + WA inbound webhook) ---
+    # LLM providers. DeepSeek é primário (custo-benefício); OpenRouter
+    # entra como fallback automático quando o primário falha.
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com/v1"
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # DeepSeek native expects the bare id; OpenRouter expects the "deepseek/"
+    # prefix. Same model on both providers (mirrors outis-atende).
+    LLM_MODEL: str = "deepseek-v4-pro"
+    LLM_FALLBACK_MODEL: str = "deepseek/deepseek-v4-pro"
+    LLM_HTTP_TIMEOUT: float = 60.0
+    # Embeddings + transcrição (Whisper) usam OpenAI.
+    OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIM: int = 1536
+    WHISPER_MODEL: str = "whisper-1"
+    # Reranker via Hugging Face Inference API.
+    HF_TOKEN: str = ""
+    RERANKER_MODEL: str = "BAAI/bge-reranker-v2-m3"
+    # Agent loop limits.
+    CHAT_MAX_ITERATIONS: int = 10
+    CHAT_MAX_HISTORY_MESSAGES: int = 20
+    KB_TOP_K: int = 20
+    KB_TOP_N: int = 5
+    KB_CHUNK_TARGET_TOKENS: int = 600
+    KB_CHUNK_OVERLAP_TOKENS: int = 80
+    KB_SEED_ON_STARTUP: bool = True
+    KB_KNOWLEDGE_DIR: str = "knowledge"
+    # Segmentação para envio em WhatsApp (limite por mensagem).
+    WA_MAX_SEGMENT_CHARS: int = 400
+
     model_config = {"env_prefix": "VIGILANTE_"}
 
 

@@ -8,6 +8,7 @@ require role `admin` because stored webhook URLs and tokens are sensitive.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser, require_role
@@ -53,6 +54,8 @@ def _to_response(cfg) -> WhatsAppConfigResponse:  # type: ignore[no-untyped-def]
         template_language=cfg.template_language,
         recipients=list(cfg.recipients or []),
         include_image=cfg.include_image,
+        has_webhook_verify_token=bool(cfg.webhook_verify_token_encrypted),
+        has_app_secret=bool(cfg.app_secret_encrypted),
     )
 
 
@@ -138,6 +141,25 @@ def put_whatsapp_config(
                 detail="Cannot enable WhatsApp without at least one recipient",
             )
 
+    # Webhook secrets follow the same None=keep / ""=clear / value=encrypt rules.
+    def _encrypt_optional(value: str | None) -> str | None:
+        if value is None:
+            return None
+        if value == "":
+            return ""
+        if not encryption_available():
+            raise HTTPException(
+                status_code=503,
+                detail="Server encryption key not configured; cannot store secret",
+            )
+        try:
+            return encrypt_secret(value)
+        except EncryptionUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+
+    verify_blob = _encrypt_optional(req.webhook_verify_token)
+    app_secret_blob = _encrypt_optional(req.app_secret)
+
     cfg = repo.upsert(
         tenant_id=user.tenant_id,
         enabled=req.enabled,
@@ -147,8 +169,18 @@ def put_whatsapp_config(
         template_language=req.template_language,
         recipients=req.recipients,
         include_image=req.include_image,
+        webhook_verify_token_encrypted=verify_blob,
+        app_secret_encrypted=app_secret_blob,
     )
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # phone_number_id is globally unique (one Meta number -> one tenant).
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Este phone_number_id já está vinculado a outro tenant.",
+        )
     session.refresh(cfg)
     return _to_response(cfg)
 

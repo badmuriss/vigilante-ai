@@ -63,21 +63,22 @@ class StreamRegistry:
         )
 
     def _register_runtime(self, entity: CameraEntity) -> None:
+        camera_id_str = str(entity.id)
         try:
             source = _build_source(entity)
         except Exception:
-            logger.exception("Skipping camera %s: failed to build source", entity.id)
+            logger.exception("Skipping camera %s: failed to build source", camera_id_str)
             return
-        alert_service = AlertService(entity.id, self._blob_store)
+        alert_service = AlertService(camera_id_str, self._blob_store)
         processor = StreamProcessor(
-            source, self._detector, alert_service, camera_id=entity.id
+            source, self._detector, alert_service, camera_id=camera_id_str
         )
         from app.detector import MVP_EPI_KEYS
         processor.set_active_epis(set(MVP_EPI_KEYS))
         with self._lock:
-            self._sources[entity.id] = source
-            self._alert_services[entity.id] = alert_service
-            self._processors[entity.id] = processor
+            self._sources[camera_id_str] = source
+            self._alert_services[camera_id_str] = alert_service
+            self._processors[camera_id_str] = processor
 
     # --- CRUD ---
 
@@ -136,14 +137,15 @@ class StreamRegistry:
             return updated
 
     def remove_camera(self, camera_id: str) -> bool:
+        camera_id_str = str(camera_id)
         with self._lock:
-            proc = self._processors.pop(camera_id, None)
-            src = self._sources.pop(camera_id, None)
-            self._alert_services.pop(camera_id, None)
+            proc = self._processors.pop(camera_id_str, None)
+            src = self._sources.pop(camera_id_str, None)
+            self._alert_services.pop(camera_id_str, None)
 
         with session_scope() as session:
             repo = CameraRepository(session)
-            removed = repo.delete(camera_id)
+            removed = repo.delete(camera_id_str)
             session.commit()
 
         if proc is not None:
@@ -186,15 +188,15 @@ class StreamRegistry:
 
     def get_processor(self, camera_id: str) -> StreamProcessor | None:
         with self._lock:
-            return self._processors.get(camera_id)
+            return self._processors.get(str(camera_id))
 
     def get_source(self, camera_id: str) -> StreamSource | None:
         with self._lock:
-            return self._sources.get(camera_id)
+            return self._sources.get(str(camera_id))
 
     def get_alert_service(self, camera_id: str) -> AlertService | None:
         with self._lock:
-            return self._alert_services.get(camera_id)
+            return self._alert_services.get(str(camera_id))
 
     def get_health(self, camera_id: str) -> StreamHealth | None:
         src = self.get_source(camera_id)

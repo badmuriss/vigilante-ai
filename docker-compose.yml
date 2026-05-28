@@ -27,6 +27,10 @@ services:
       - VIGILANTE_DATABASE_URL=postgresql+psycopg2://vigilante:vigilante_dev@postgres:5432/vigilante
       - VIGILANTE_BLOB_STORAGE_PATH=/data/alerts
       - VIGILANTE_RETRAINING_EXPORT_PATH=/data/feedback
+      - VIGILANTE_NOTIFY_ENCRYPTION_KEY=${VIGILANTE_NOTIFY_ENCRYPTION_KEY:-}
+      - VIGILANTE_WHATSAPP_API_BASE=${VIGILANTE_WHATSAPP_API_BASE:-https://graph.facebook.com/v22.0}
+      - VIGILANTE_WHATSAPP_HTTP_TIMEOUT=${VIGILANTE_WHATSAPP_HTTP_TIMEOUT:-10.0}
+      - VIGILANTE_WHATSAPP_DISPATCH_WORKERS=${VIGILANTE_WHATSAPP_DISPATCH_WORKERS:-4}
     group_add:
       - "44"  # video group for camera access
     devices:

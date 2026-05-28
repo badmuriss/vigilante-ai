@@ -86,8 +86,11 @@ const config: Config = {
           to: { opacity: "1" },
         },
         "slide-up": {
-          from: { opacity: "0", transform: "translateY(8px)" },
-          to: { opacity: "1", transform: "translateY(0)" },
+          // Centered Radix dialogs rely on `-translate-x-1/2 -translate-y-1/2`
+          // for centering. Keep that translation in the keyframe so the
+          // animation only adds the 8px vertical offset on top.
+          from: { opacity: "0", transform: "translate(-50%, calc(-50% + 8px))" },
+          to: { opacity: "1", transform: "translate(-50%, -50%)" },
         },
         "slide-in-right": {
           from: { transform: "translateX(100%)" },

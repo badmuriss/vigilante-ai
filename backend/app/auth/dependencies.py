@@ -54,13 +54,13 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Malformed token",
         )
-    user = session.get(User, user_id)
-    if user is None or user.tenant_id != tenant_id:
+    user = session.get(User, str(user_id))
+    if user is None or str(user.tenant_id) != str(tenant_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found"
         )
     return CurrentUser(
-        id=user.id, email=user.email, role=user.role, tenant_id=user.tenant_id
+        id=str(user.id), email=user.email, role=user.role, tenant_id=str(user.tenant_id)
     )
 
 

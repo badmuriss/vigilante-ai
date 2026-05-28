@@ -7,8 +7,14 @@ import type {
   ProbeResponse,
   SessionStats,
   SystemStatus,
+  TeamsConfig,
+  TeamsConfigUpdate,
+  TeamsTestResult,
   TokenPair,
   User,
+  WhatsAppConfig,
+  WhatsAppConfigUpdate,
+  WhatsAppTestResult,
 } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -334,6 +340,61 @@ export async function listCameraAlerts(
 export async function getCameraStats(cameraId: string): Promise<SessionStats> {
   const res = await apiFetch(`/api/cameras/${cameraId}/stats`);
   if (!res.ok) throw await buildApiError(res, "Failed to fetch stats");
+  return res.json();
+}
+
+// --- Notifications (WhatsApp) ---
+
+export async function getWhatsAppConfig(): Promise<WhatsAppConfig> {
+  const res = await apiFetch("/api/notifications/whatsapp");
+  if (!res.ok) throw await buildApiError(res, "Failed to fetch WhatsApp config");
+  return res.json();
+}
+
+export async function updateWhatsAppConfig(
+  payload: WhatsAppConfigUpdate,
+): Promise<WhatsAppConfig> {
+  const res = await apiFetch("/api/notifications/whatsapp", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await buildApiError(res, "Failed to save WhatsApp config");
+  return res.json();
+}
+
+export async function testWhatsApp(phoneNumber: string): Promise<WhatsAppTestResult> {
+  const res = await apiFetch("/api/notifications/whatsapp/test", {
+    method: "POST",
+    body: JSON.stringify({ phone_number: phoneNumber }),
+  });
+  if (!res.ok) throw await buildApiError(res, "WhatsApp test failed");
+  return res.json();
+}
+
+// --- Notifications (Microsoft Teams) ---
+
+export async function getTeamsConfig(): Promise<TeamsConfig> {
+  const res = await apiFetch("/api/notifications/teams");
+  if (!res.ok) throw await buildApiError(res, "Failed to fetch Teams config");
+  return res.json();
+}
+
+export async function updateTeamsConfig(
+  payload: TeamsConfigUpdate,
+): Promise<TeamsConfig> {
+  const res = await apiFetch("/api/notifications/teams", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await buildApiError(res, "Failed to save Teams config");
+  return res.json();
+}
+
+export async function testTeams(): Promise<TeamsTestResult> {
+  const res = await apiFetch("/api/notifications/teams/test", {
+    method: "POST",
+  });
+  if (!res.ok) throw await buildApiError(res, "Teams test failed");
   return res.json();
 }
 

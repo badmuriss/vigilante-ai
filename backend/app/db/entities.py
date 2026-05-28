@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -17,14 +16,42 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import CHAR, TypeDecorator
 
 from app.db.base import Base
+
+
+class GUID(TypeDecorator):
+    """Store UUID strings as native UUID on Postgres and CHAR(36) elsewhere."""
+
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):  # type: ignore[no-untyped-def]
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=False))
+        return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):  # type: ignore[no-untyped-def]
+        if value is None:
+            return None
+        parsed = value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+        return str(parsed)
+
+    def process_result_value(self, value, dialect):  # type: ignore[no-untyped-def]
+        if value is None:
+            return value
+        return str(value)
+
+
+JSON_TYPE = JSONB().with_variant(JSON(), "sqlite")
 
 
 def _uuid() -> str:
@@ -34,7 +61,7 @@ def _uuid() -> str:
 class Tenant(Base):
     __tablename__ = "tenants"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -42,14 +69,20 @@ class Tenant(Base):
 
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
     sites: Mapped[list["Site"]] = relationship(back_populates="tenant")
+    whatsapp_config: Mapped["WhatsAppConfig | None"] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan", uselist=False
+    )
+    teams_config: Mapped["TeamsConfig | None"] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan", uselist=False
+    )
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
     tenant_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -64,9 +97,9 @@ class User(Base):
 class Site(Base):
     __tablename__ = "sites"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
     tenant_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     location: Mapped[str | None] = mapped_column(String(256), nullable=True)
@@ -81,9 +114,9 @@ class Site(Base):
 class Camera(Base):
     __tablename__ = "cameras"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
     site_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
+        GUID(), ForeignKey("sites.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     source_kind: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -99,22 +132,27 @@ class Camera(Base):
     )
 
     site: Mapped[Site] = relationship(back_populates="cameras")
-    alerts: Mapped[list["Alert"]] = relationship(back_populates="camera")
+    alerts: Mapped[list["Alert"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan"
+    )
+    sessions: Mapped[list["Session"]] = relationship(
+        back_populates="camera", cascade="all, delete-orphan"
+    )
 
 
 class Alert(Base):
     __tablename__ = "alerts"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
     camera_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False
+        GUID(), ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     violation_type: Mapped[str] = mapped_column(String(255), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    missing_epis: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    missing_epis: Mapped[list[str]] = mapped_column(JSON_TYPE, nullable=False, default=list)
     frame_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Raw (un-annotated) frame for retraining export. Annotated frame in
@@ -122,7 +160,7 @@ class Alert(Base):
     frame_raw_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Detections that triggered the alert: list of {class_name, bbox, confidence}.
     # Used to materialise YOLO labels when feedback exports happen.
-    detected_bboxes: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    detected_bboxes: Mapped[list[dict] | None] = mapped_column(JSON_TYPE, nullable=True)
     # User feedback for online learning. NULL = pending review (soft alert),
     # "correct" = confirmed incident, "false_positive" = model was wrong.
     feedback: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -140,9 +178,9 @@ class Alert(Base):
 class Session(Base):
     __tablename__ = "sessions"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
     camera_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False
+        GUID(), ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False
     )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -150,5 +188,86 @@ class Session(Base):
     ended_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    camera: Mapped[Camera] = relationship(back_populates="sessions")
     total_frames: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     compliant_frames: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class WhatsAppConfig(Base):
+    """Per-tenant WhatsApp Cloud API configuration.
+
+    One row per tenant (`tenant_id` is UNIQUE). `access_token_encrypted`
+    holds a Fernet-encrypted Meta access token — never stored in plain
+    text. `recipients` is a JSON list of E.164 phone numbers (e.g.
+    "+5511999999999"). Notifications fire only when `enabled=True` AND
+    `recipients` is non-empty AND the row has a token + phone_number_id.
+    """
+
+    __tablename__ = "whatsapp_configs"
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        GUID(),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    phone_number_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    template_language: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pt_BR"
+    )
+    recipients: Mapped[list[str]] = mapped_column(
+        JSON_TYPE, nullable=False, default=list
+    )
+    include_image: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    tenant: Mapped[Tenant] = relationship(back_populates="whatsapp_config")
+
+
+class TeamsConfig(Base):
+    """Per-tenant Microsoft Teams webhook configuration.
+
+    `webhook_url_encrypted` is a secret URL generated by Teams Workflows /
+    Power Automate. Anyone with the URL can post to the target chat/channel,
+    so it is encrypted at rest and never returned through the API.
+    """
+
+    __tablename__ = "teams_configs"
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        GUID(),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    webhook_url_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    channel_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    notify_on_confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    tenant: Mapped[Tenant] = relationship(back_populates="teams_config")

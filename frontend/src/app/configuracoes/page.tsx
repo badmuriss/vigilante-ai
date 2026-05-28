@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Mail, Shield, Building, Cpu, type LucideIcon } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
+import { TeamsNotificationsCard } from "@/components/TeamsNotificationsCard";
+import { WhatsAppNotificationsCard } from "@/components/WhatsAppNotificationsCard";
 import { getMe } from "@/lib/api";
 import type { User } from "@/types";
 
@@ -23,29 +25,34 @@ export default function ConfiguracoesPage() {
       {loading ? (
         <p className="text-sm text-text-muted">Carregando…</p>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <section className="card p-6">
-            <p className="eyebrow">Conta</p>
-            <h2 className="mt-1 text-base font-semibold text-text">Dados do usuário</h2>
-            <dl className="mt-5 space-y-4">
-              <Field icon={Mail} label="Email" value={user?.email ?? "—"} />
-              <Field icon={Shield} label="Papel" value={translateRole(user?.role)} />
-              <Field icon={Building} label="Tenant" value={user?.tenant_id ?? "—"} mono />
-            </dl>
-          </section>
+        <div className="space-y-8">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <section className="card p-6">
+              <p className="eyebrow">Conta</p>
+              <h2 className="mt-1 text-base font-semibold text-text">Dados do usuário</h2>
+              <dl className="mt-5 space-y-4">
+                <Field icon={Mail} label="Email" value={user?.email ?? "—"} />
+                <Field icon={Shield} label="Papel" value={translateRole(user?.role)} />
+                <Field icon={Building} label="Tenant" value={user?.tenant_id ?? "—"} mono />
+              </dl>
+            </section>
 
-          <section className="card p-6">
-            <p className="eyebrow">Plataforma</p>
-            <h2 className="mt-1 text-base font-semibold text-text">Modelo e processamento</h2>
-            <dl className="mt-5 space-y-4">
-              <Field icon={Cpu} label="Modelo" value="YOLOv8s · helmet + vest" />
-              <Field icon={Cpu} label="Inferência" value="GPU local · ~700 fps" />
-            </dl>
-            <p className="mt-6 text-xs text-text-muted">
-              Configurações avançadas (notificação WhatsApp, regras por câmera, exportação automática) virão na Fase 5
-              do projeto.
-            </p>
-          </section>
+            <section className="card p-6">
+              <p className="eyebrow">Plataforma</p>
+              <h2 className="mt-1 text-base font-semibold text-text">Modelo e processamento</h2>
+              <dl className="mt-5 space-y-4">
+                <Field icon={Cpu} label="Modelo" value="YOLOv8s · helmet + vest" />
+                <Field icon={Cpu} label="Inferência" value="GPU local · ~700 fps" />
+              </dl>
+            </section>
+          </div>
+
+          {user?.role === "admin" && (
+            <>
+              <WhatsAppNotificationsCard />
+              <TeamsNotificationsCard />
+            </>
+          )}
         </div>
       )}
     </AppShell>

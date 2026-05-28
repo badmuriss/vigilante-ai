@@ -1,12 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Clock3, ShieldAlert, X } from "lucide-react";
+import { Check, Clock3, ShieldAlert, ThumbsDown, X } from "lucide-react";
 import type { Alert } from "@/types";
 
 interface AlertDetailsModalProps {
   alert: Alert | null;
   onClose: () => void;
+  canReview?: boolean;
+  onReview?: (
+    alertId: string,
+    decision: "correct" | "false_positive",
+  ) => Promise<void> | void;
 }
 
 function formatDateTime(iso: string): string {
@@ -21,13 +27,32 @@ function formatDateTime(iso: string): string {
   });
 }
 
-export default function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
+export default function AlertDetailsModal({
+  alert,
+  onClose,
+  canReview = false,
+  onReview,
+}: AlertDetailsModalProps) {
+  const [reviewing, setReviewing] = useState<"correct" | "false_positive" | null>(null);
   const open = alert !== null;
   if (!alert) return null;
 
   const imageData = alert.frame_image || alert.frame_thumbnail;
   const missingItems = alert.missing_epis.length > 0 ? alert.missing_epis : [alert.violation_type];
   const confidence = Math.round(alert.confidence * 100);
+  const isPending =
+    alert.status === "pending" || (alert.status === undefined && alert.feedback == null);
+  const showReview = canReview && !!onReview && isPending;
+
+  async function handleReview(decision: "correct" | "false_positive") {
+    if (!onReview || !alert) return;
+    setReviewing(decision);
+    try {
+      await onReview(alert.id, decision);
+    } finally {
+      setReviewing(null);
+    }
+  }
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
@@ -98,6 +123,35 @@ export default function AlertDetailsModal({ alert, onClose }: AlertDetailsModalP
                   Valor representativo da inferência no momento em que a violação foi registrada.
                 </p>
               </div>
+
+              {showReview && (
+                <div className="card p-4">
+                  <p className="eyebrow">Revisar este alerta</p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Confirme ou descarte para retirar da fila de pendências.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => handleReview("correct")}
+                      disabled={reviewing !== null}
+                      className="btn-primary flex-1 text-xs disabled:opacity-60"
+                    >
+                      <Check size={14} strokeWidth={2.2} />
+                      {reviewing === "correct" ? "Confirmando…" : "Confirmar"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleReview("false_positive")}
+                      disabled={reviewing !== null}
+                      className="btn-secondary flex-1 text-xs disabled:opacity-60"
+                    >
+                      <ThumbsDown size={14} strokeWidth={2.2} />
+                      {reviewing === "false_positive" ? "Descartando…" : "Falso positivo"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </Dialog.Content>

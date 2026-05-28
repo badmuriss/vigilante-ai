@@ -5,8 +5,14 @@ import { Filter, ShieldAlert } from "lucide-react";
 
 import { AppShell } from "@/components/AppShell";
 import AlertDetailsModal from "@/components/AlertDetailsModal";
-import { listCameraAlerts, listCameras, getMe } from "@/lib/api";
-import type { Alert, Camera } from "@/types";
+import {
+  listCameraAlerts,
+  listCameras,
+  getMe,
+  setAlertFeedback,
+  type AlertStatusFilter,
+} from "@/lib/api";
+import type { Alert, Camera, User } from "@/types";
 
 interface AlertWithCamera extends Alert {
   cameraId: string;
@@ -20,6 +26,26 @@ const PERIODS = [
   { value: "all", label: "Todos" },
 ] as const;
 
+const STATUSES = [
+  { value: "all", label: "Todos" },
+  { value: "confirmed", label: "Aprovados" },
+  { value: "pending", label: "Aguardando revisão" },
+  { value: "rejected", label: "Rejeitados" },
+] as const;
+
+const REVIEWER_ROLES: User["role"][] = ["admin", "supervisor"];
+
+type StatusFilter = (typeof STATUSES)[number]["value"];
+
+function deriveStatus(a: Alert): "pending" | "confirmed" | "rejected" {
+  if (a.status === "pending" || a.status === "confirmed" || a.status === "rejected") {
+    return a.status;
+  }
+  if (a.feedback === "correct") return "confirmed";
+  if (a.feedback === "false_positive") return "rejected";
+  return "pending";
+}
+
 export default function HistoricoPage() {
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [allAlerts, setAllAlerts] = useState<AlertWithCamera[]>([]);
@@ -27,16 +53,25 @@ export default function HistoricoPage() {
   const [period, setPeriod] = useState<typeof PERIODS[number]["value"]>("7d");
   const [cameraFilter, setCameraFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [selected, setSelected] = useState<Alert | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [role, setRole] = useState<User["role"] | null>(null);
+  const [selected, setSelected] = useState<AlertWithCamera | null>(null);
+
+  const isReviewer = role !== null && REVIEWER_ROLES.includes(role);
 
   async function load() {
     try {
-      await getMe();
+      const me = await getMe();
+      setRole(me.role);
+      const reviewer = REVIEWER_ROLES.includes(me.role);
+      // Reviewers fetch every status so they can switch between approved
+      // and pending without re-hitting the API; viewers only get confirmed.
+      const fetchStatus: AlertStatusFilter = reviewer ? "all" : "confirmed";
       const list = await listCameras();
       setCameras(list);
       const results = await Promise.all(
         list.map((c) =>
-          listCameraAlerts(c.id, 1, 200)
+          listCameraAlerts(c.id, 1, 200, fetchStatus)
             .then((alerts) => alerts.map((a) => ({ ...a, cameraId: c.id, cameraName: c.name })))
             .catch(() => [] as AlertWithCamera[]),
         ),
@@ -55,6 +90,13 @@ export default function HistoricoPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Non-reviewers can't see pending/rejected; lock their filter to "confirmed".
+  useEffect(() => {
+    if (!isReviewer && statusFilter !== "confirmed" && statusFilter !== "all") {
+      setStatusFilter("all");
+    }
+  }, [isReviewer, statusFilter]);
+
   const filtered = useMemo(() => {
     const now = Date.now();
     const cutoff =
@@ -69,19 +111,49 @@ export default function HistoricoPage() {
       .filter((a) => new Date(a.timestamp).getTime() >= cutoff)
       .filter((a) => cameraFilter === "all" || a.cameraId === cameraFilter)
       .filter((a) => typeFilter === "all" || a.violation_type === typeFilter)
+      .filter((a) => statusFilter === "all" || deriveStatus(a) === statusFilter)
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [allAlerts, period, cameraFilter, typeFilter]);
+  }, [allAlerts, period, cameraFilter, typeFilter, statusFilter]);
+
+  const pendingCount = useMemo(
+    () => allAlerts.filter((a) => deriveStatus(a) === "pending").length,
+    [allAlerts],
+  );
 
   const types = useMemo(
     () => Array.from(new Set(allAlerts.map((a) => a.violation_type))),
     [allAlerts],
   );
 
+  async function handleReview(
+    alertId: string,
+    decision: "correct" | "false_positive",
+  ) {
+    try {
+      const updated = await setAlertFeedback(alertId, decision);
+      setAllAlerts((prev) =>
+        prev.map((a) =>
+          a.id === alertId
+            ? { ...a, ...updated, cameraId: a.cameraId, cameraName: a.cameraName }
+            : a,
+        ),
+      );
+      setSelected((curr) =>
+        curr && curr.id === alertId
+          ? { ...curr, ...updated, cameraId: curr.cameraId, cameraName: curr.cameraName }
+          : curr,
+      );
+    } catch {
+      /* noop */
+    }
+  }
+
+  const subtitle = isReviewer
+    ? `${filtered.length} alertas no filtro · ${pendingCount} aguardando revisão`
+    : `${filtered.length} alertas no período · ${cameras.length} câmeras monitoradas`;
+
   return (
-    <AppShell
-      title="Histórico de alertas"
-      subtitle={`${filtered.length} alertas no período · ${cameras.length} câmeras monitoradas`}
-    >
+    <AppShell title="Histórico de alertas" subtitle={subtitle}>
       <div className="card mb-6 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1.5">
@@ -92,6 +164,24 @@ export default function HistoricoPage() {
               ))}
             </select>
           </div>
+          {isReviewer && (
+            <div className="space-y-1.5">
+              <label className="label">Status</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className="input"
+              >
+                {STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.value === "pending" && pendingCount > 0
+                      ? `${s.label} (${pendingCount})`
+                      : s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className="label">Câmera</label>
             <select value={cameraFilter} onChange={(e) => setCameraFilter(e.target.value)} className="input">
@@ -138,6 +228,7 @@ export default function HistoricoPage() {
                 <th>Data/Hora</th>
                 <th>Câmera</th>
                 <th>Tipo</th>
+                <th>Status</th>
                 <th>Confiança</th>
                 <th>Frame</th>
                 <th></th>
@@ -146,6 +237,7 @@ export default function HistoricoPage() {
             <tbody>
               {filtered.map((alert) => {
                 const date = new Date(alert.timestamp);
+                const status = deriveStatus(alert);
                 return (
                   <tr key={alert.id} onClick={() => setSelected(alert)} className="cursor-pointer">
                     <td className="mono-num text-xs">
@@ -153,6 +245,9 @@ export default function HistoricoPage() {
                     </td>
                     <td className="font-medium">{alert.cameraName}</td>
                     <td>{alert.violation_type}</td>
+                    <td>
+                      <StatusBadge status={status} />
+                    </td>
                     <td className="mono-num">{Math.round(alert.confidence * 100)}%</td>
                     <td>
                       {alert.frame_thumbnail ? (
@@ -180,8 +275,23 @@ export default function HistoricoPage() {
       )}
 
       {selected && (
-        <AlertDetailsModal alert={selected} onClose={() => setSelected(null)} />
+        <AlertDetailsModal
+          alert={selected}
+          onClose={() => setSelected(null)}
+          canReview={isReviewer}
+          onReview={handleReview}
+        />
       )}
     </AppShell>
   );
+}
+
+function StatusBadge({ status }: { status: "pending" | "confirmed" | "rejected" }) {
+  if (status === "pending") {
+    return <span className="badge badge-warning">Aguardando</span>;
+  }
+  if (status === "rejected") {
+    return <span className="badge badge-neutral">Falso positivo</span>;
+  }
+  return <span className="badge badge-success">Aprovado</span>;
 }

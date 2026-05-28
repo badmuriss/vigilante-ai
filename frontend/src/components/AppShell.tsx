@@ -10,7 +10,7 @@ interface AppShellProps {
 
 export function AppShell({ title, subtitle, actions, children }: AppShellProps) {
   return (
-    <div className="flex min-h-screen bg-bg">
+    <div className="flex h-screen overflow-hidden bg-bg">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between gap-6 border-b border-border bg-bg-elevated px-8">
@@ -22,7 +22,7 @@ export function AppShell({ title, subtitle, actions, children }: AppShellProps) 
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
         </header>
-        <main className="min-w-0 flex-1 overflow-x-hidden p-8">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-8">{children}</main>
       </div>
     </div>
   );

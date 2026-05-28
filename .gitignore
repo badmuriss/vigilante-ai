@@ -13,14 +13,24 @@ build/
 # Pretrained YOLO base weights (auto-downloaded by Ultralytics; production model is backend/best.pt)
 /yolo*.pt
 /yolo*.onnx
+backend/yolo*.pt
+backend/yolo*.onnx
 backend/models/*.pt
 backend/models/*.onnx
 
 # Backend runtime artifacts
 backend/data/
+backend/*.db
+backend/*.db-*
+*.sqlite
+*.sqlite3
 backend/.mypy_cache/
 backend/.pytest_cache/
 backend/migrations/versions/__pycache__/
+
+# Active-learning exports generated from reviewer feedback
+/ml/data/
+/backend/ml/data/
 
 # Node / Next.js
 node_modules/

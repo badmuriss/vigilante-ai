@@ -107,3 +107,53 @@ export interface ProbeResponse {
   ok: boolean;
   message: string;
 }
+
+// --- Notifications ---
+
+export interface WhatsAppConfig {
+  enabled: boolean;
+  phone_number_id: string | null;
+  has_token: boolean;
+  template_name: string | null;
+  template_language: string;
+  recipients: string[];
+  include_image: boolean;
+}
+
+export interface WhatsAppConfigUpdate {
+  enabled: boolean;
+  phone_number_id: string | null;
+  // `null` keeps the existing token, "" clears it, any string replaces it.
+  access_token: string | null;
+  template_name: string | null;
+  template_language: string;
+  recipients: string[];
+  include_image: boolean;
+}
+
+export interface WhatsAppTestResult {
+  ok: boolean;
+  message_id?: string | null;
+  error?: string | null;
+}
+
+export interface TeamsConfig {
+  enabled: boolean;
+  has_webhook_url: boolean;
+  channel_name: string | null;
+  notify_on_confirmed: boolean;
+}
+
+export interface TeamsConfigUpdate {
+  enabled: boolean;
+  // `null` keeps the existing webhook URL, "" clears it, any string replaces it.
+  webhook_url: string | null;
+  channel_name: string | null;
+  notify_on_confirmed: boolean;
+}
+
+export interface TeamsTestResult {
+  ok: boolean;
+  status_code?: number | null;
+  error?: string | null;
+}

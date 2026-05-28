@@ -33,9 +33,13 @@ pip install \
   "opencv-python-headless>=4.9.0" \
   "pyyaml>=6.0" \
   "numpy>=1.26.0" \
-  "roboflow>=1.1.0" \
+  "roboflow>=1.3.8,<2.0" \
   "onnx>=1.15.0" \
-  "onnxruntime-gpu>=1.17.0"
+  "onnxruntime-gpu>=1.17.0" \
+  "pillow>=10.4.0" \
+  "certifi>=2024.7.4" \
+  "urllib3>=2.5.0" \
+  "fonttools>=4.62.0"
 
 echo
 echo "==================================================================="

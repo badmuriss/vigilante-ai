@@ -31,6 +31,15 @@ services:
       - VIGILANTE_WHATSAPP_API_BASE=${VIGILANTE_WHATSAPP_API_BASE:-https://graph.facebook.com/v22.0}
       - VIGILANTE_WHATSAPP_HTTP_TIMEOUT=${VIGILANTE_WHATSAPP_HTTP_TIMEOUT:-10.0}
       - VIGILANTE_WHATSAPP_DISPATCH_WORKERS=${VIGILANTE_WHATSAPP_DISPATCH_WORKERS:-4}
+      # Single shared platform Meta number (global, not per-tenant).
+      - VIGILANTE_WHATSAPP_PHONE_NUMBER_ID=${VIGILANTE_WHATSAPP_PHONE_NUMBER_ID:-}
+      - VIGILANTE_WHATSAPP_ACCESS_TOKEN=${VIGILANTE_WHATSAPP_ACCESS_TOKEN:-}
+      - VIGILANTE_WHATSAPP_APP_SECRET=${VIGILANTE_WHATSAPP_APP_SECRET:-}
+      - VIGILANTE_WHATSAPP_VERIFY_TOKEN=${VIGILANTE_WHATSAPP_VERIFY_TOKEN:-}
+      - VIGILANTE_WHATSAPP_TEMPLATE_NAME=${VIGILANTE_WHATSAPP_TEMPLATE_NAME:-}
+      - VIGILANTE_WHATSAPP_TEMPLATE_LANGUAGE=${VIGILANTE_WHATSAPP_TEMPLATE_LANGUAGE:-pt_BR}
+      - VIGILANTE_PUBLIC_APP_URL=${VIGILANTE_PUBLIC_APP_URL:-https://vigilanteai.outis.com.br}
+      - VIGILANTE_LOCAL_TIMEZONE=${VIGILANTE_LOCAL_TIMEZONE:-America/Sao_Paulo}
       - VIGILANTE_DEEPSEEK_API_KEY=${VIGILANTE_DEEPSEEK_API_KEY:-}
       - VIGILANTE_OPENROUTER_API_KEY=${VIGILANTE_OPENROUTER_API_KEY:-}
       - VIGILANTE_OPENAI_API_KEY=${VIGILANTE_OPENAI_API_KEY:-}
@@ -58,7 +67,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=
+      - NEXT_BACKEND_INTERNAL_URL=http://backend:8000
     depends_on:
       - backend
 
@@ -99,6 +109,25 @@ services:
       - MEDIA_DIR=/media
       - SEEK_SECONDS=${SEEK_SECONDS:-0}
       - ACTIVE_VIDEO=${ACTIVE_VIDEO:-}
+
+  # Stable public webhook tunnel (profile: tunnel)
+  #
+  # Use a named Cloudflare Tunnel with a public hostname configured in
+  # Cloudflare Zero Trust:
+  #   https://vigilanteai.outis.com.br -> http://frontend:3000
+  #
+  # The frontend proxies /api/* to http://backend:8000 through Next rewrites, so
+  # the same public hostname serves the app, API, camera frames and webhooks.
+  #
+  # Then set CLOUDFLARED_TOKEN in .env and run:
+  #   docker compose --profile rtsp --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TOKEN}
+    depends_on:
+      - frontend
 
 volumes:
   postgres_data:

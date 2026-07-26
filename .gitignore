@@ -60,6 +60,8 @@ Thumbs.db
 
 # Editor / agent caches
 .claude/
+.claude-plugin/
+harness.toml
 
 # FIAP entregaveis (school deliverables, not project docs)
 docs/

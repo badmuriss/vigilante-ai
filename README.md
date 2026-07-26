@@ -43,6 +43,13 @@ revisados em um loop de retreinamento.
 
 **Use Docker. Sempre.** Subir backend, postgres, frontend e mediamtx separados é complicado e cada serviço tem dependência específica (CUDA, libs de vídeo, drivers de webcam). O `docker compose` resolve tudo.
 
+## Roadmap do TCC
+
+O plano executivo até a apresentação final de outubro de 2026 está em
+[`docs/roadmap-tcc-outubro-2026.md`](./docs/roadmap-tcc-outubro-2026.md). Ele
+cobre nuvem, câmeras reais de canteiro, melhoria contínua do modelo, métricas,
+segurança/LGPD e preparação da demonstração final.
+
 ### 1. Subir o stack completo
 
 ```bash
@@ -72,9 +79,13 @@ Detalhes em [`media/README.md`](./media/README.md).
 ### 3. Primeiro acesso
 
 1. Abre http://localhost:3000/login
-2. Clica em "Registrar" e cria o primeiro usuário (vira admin do tenant)
+2. Em desenvolvimento, clica em "Registrar" e cria o primeiro usuário (vira admin do tenant)
 3. Vai em `/cameras` e adiciona uma fonte (webcam local, RTSP, ou simulada)
 4. Inicia o stream pelo botão da câmera
+
+Em produção/piloto real, o cadastro aberto deve ficar desabilitado. O onboarding
+é feito por painel admin: criar tenant/empresa, usuários, papéis, canteiros,
+câmeras e integrações.
 
 ### 4. Rebuildar após alterações
 
@@ -122,7 +133,7 @@ npm run dev
 
 ## Fluxo de autenticação
 
-1. `POST /api/auth/register` com `{email, password, tenant_name}` — cria tenant + primeiro usuário (role admin).
+1. `POST /api/auth/register` com `{email, password, tenant_name}` — cria tenant + primeiro usuário (role admin) apenas quando o registro aberto estiver habilitado para bootstrap/dev.
 2. `POST /api/auth/login` retorna `{access_token, refresh_token}`.
 3. Toda chamada em `/api/cameras/**` e `/api/alerts/**` exige `Authorization: Bearer <access_token>`.
 4. Roles: `admin` (total), `supervisor` (revisa alertas, configura), `viewer` (só leitura).
@@ -175,10 +186,12 @@ invalida todos os tokens já armazenados.
 
 1. `https://developers.facebook.com` → criar app do tipo **Business** com
    produto **WhatsApp**.
-2. Em WhatsApp → API Setup, anote o **Phone Number ID** (numérico, 15 dígitos).
-3. Gere um **token permanente** via System User do Meta Business (Settings
+2. Publique uma política de privacidade em URL pública do domínio do produto e
+   cadastre essa URL nas configurações do app Meta.
+3. Em WhatsApp → API Setup, anote o **Phone Number ID** (numérico, 15 dígitos).
+4. Gere um **token permanente** via System User do Meta Business (Settings
    → Users → System Users → Add → Generate Token com permissão `whatsapp_business_messaging`).
-4. Aprove um **Template** do tipo `Utility` com:
+5. Aprove um **Template** do tipo `Utility` com:
    - Header (opcional): tipo `Image` — necessário se você quer anexar a foto.
    - Body: 3 variáveis `{{1}} {{2}} {{3}}` correspondendo a câmera, EPIs
      faltando e timestamp formatado.

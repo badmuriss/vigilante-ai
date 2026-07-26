@@ -21,12 +21,13 @@ from app import db
 from app.auth.dependencies import CurrentUser
 from app.config import settings
 from app.db.base import Base, get_session
-from app.db.entities import Tenant
+from app.db.entities import Tenant, WhatsAppOperator
 from app.notifications.router import router as notifications_router
 from app.services import crypto
 
 
 TEST_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+OTHER_TENANT_ID = "00000000-0000-0000-0000-000000000002"
 
 
 def _make_user(role: str) -> CurrentUser:
@@ -44,6 +45,14 @@ def fernet_key(monkeypatch: pytest.MonkeyPatch) -> str:
     monkeypatch.setattr(settings, "NOTIFY_ENCRYPTION_KEY", key)
     crypto._fernet.cache_clear()
     return key
+
+
+@pytest.fixture()
+def wa_connected(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the platform's shared Meta number look configured (env)."""
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "111222333")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "META_TOKEN")
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_NAME", "safety_alert_pt")
 
 
 @pytest.fixture()
@@ -127,8 +136,9 @@ def test_get_returns_disabled_defaults_when_no_config(client_admin: TestClient) 
     assert res.status_code == 200
     body = res.json()
     assert body["enabled"] is False
-    assert body["has_token"] is False
-    assert body["recipients"] == []
+    assert body["include_image"] is True
+    assert body["operators"] == []
+    assert "connected" in body
 
     teams_res = client_admin.get("/api/notifications/teams")
     assert teams_res.status_code == 200
@@ -138,30 +148,40 @@ def test_get_returns_disabled_defaults_when_no_config(client_admin: TestClient) 
     assert teams_body["notify_on_confirmed"] is True
 
 
-def test_put_then_get_round_trip_redacts_token(client_admin: TestClient) -> None:
-    payload = {
-        "enabled": False,
-        "phone_number_id": "111222",
-        "access_token": "META_TOKEN",
-        "template_name": "safety_alert_pt",
-        "template_language": "pt_BR",
-        "recipients": ["+5511999999999"],
-        "include_image": True,
-    }
-    res = client_admin.put("/api/notifications/whatsapp", json=payload)
+def test_put_config_round_trip(
+    client_admin: TestClient, wa_connected: None
+) -> None:
+    res = client_admin.put(
+        "/api/notifications/whatsapp",
+        json={"enabled": True, "include_image": False},
+    )
     assert res.status_code == 200, res.text
     body = res.json()
-    # Token must NEVER leak in any field of the response.
-    assert "META_TOKEN" not in res.text
-    assert body["has_token"] is True
-    assert body["phone_number_id"] == "111222"
-    assert body["recipients"] == ["+5511999999999"]
+    assert body["enabled"] is True
+    assert body["include_image"] is False
+    assert body["connected"] is True
 
-    # GET returns same shape, still redacted.
     res2 = client_admin.get("/api/notifications/whatsapp")
     assert res2.status_code == 200
-    assert "META_TOKEN" not in res2.text
-    assert res2.json()["has_token"] is True
+    assert res2.json()["enabled"] is True
+    assert res2.json()["include_image"] is False
+
+
+def test_enabled_reported_false_when_creds_lost(
+    client_admin: TestClient, wa_connected: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client_admin.put(
+        "/api/notifications/whatsapp",
+        json={"enabled": True, "include_image": True},
+    )
+    # Platform loses its credentials -> effective enabled must read False so the
+    # UI never strands a checked+disabled switch.
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "")
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_NAME", "")
+    body = client_admin.get("/api/notifications/whatsapp").json()
+    assert body["connected"] is False
+    assert body["enabled"] is False
 
 
 def test_put_teams_then_get_round_trip_redacts_webhook(
@@ -187,21 +207,19 @@ def test_put_teams_then_get_round_trip_redacts_webhook(
     assert res2.json()["has_webhook_url"] is True
 
 
-def test_put_rejects_enabling_without_token(client_admin: TestClient) -> None:
+def test_put_rejects_enabling_when_not_connected(
+    client_admin: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No global Meta credentials -> cannot enable.
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "")
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_NAME", "")
     res = client_admin.put(
         "/api/notifications/whatsapp",
-        json={
-            "enabled": True,
-            "phone_number_id": "111",
-            "access_token": None,
-            "template_name": "t",
-            "template_language": "pt_BR",
-            "recipients": ["+5511999999999"],
-            "include_image": True,
-        },
+        json={"enabled": True, "include_image": True},
     )
     assert res.status_code == 400
-    assert "token" in res.text.lower()
+    assert "credenciais" in res.text.lower()
 
 
 def test_put_teams_rejects_enabling_without_webhook(
@@ -233,70 +251,67 @@ def test_put_teams_rejects_non_https_webhook(client_admin: TestClient) -> None:
     assert res.status_code == 422
 
 
-def test_put_rejects_enabling_without_recipients(client_admin: TestClient) -> None:
-    res = client_admin.put(
-        "/api/notifications/whatsapp",
-        json={
-            "enabled": True,
-            "phone_number_id": "111",
-            "access_token": "ABC",
-            "template_name": "t",
-            "template_language": "pt_BR",
-            "recipients": [],
-            "include_image": True,
-        },
+def test_add_and_list_operator(client_admin: TestClient) -> None:
+    res = client_admin.post(
+        "/api/notifications/whatsapp/operators",
+        json={"phone": "+5511999999999", "name": "Ana"},
     )
-    assert res.status_code == 400
-    assert "recipient" in res.text.lower()
+    assert res.status_code == 201, res.text
+    op = res.json()
+    assert op["phone"] == "+5511999999999"
+    assert op["name"] == "Ana"
+    assert op["enabled"] is True
+
+    listed = client_admin.get("/api/notifications/whatsapp").json()["operators"]
+    assert [o["phone"] for o in listed] == ["+5511999999999"]
 
 
-def test_put_validates_e164(client_admin: TestClient) -> None:
-    res = client_admin.put(
-        "/api/notifications/whatsapp",
-        json={
-            "enabled": False,
-            "phone_number_id": "111",
-            "access_token": "ABC",
-            "template_name": "t",
-            "template_language": "pt_BR",
-            "recipients": ["5511999999999"],  # missing +
-            "include_image": True,
-        },
+def test_add_operator_validates_e164(client_admin: TestClient) -> None:
+    res = client_admin.post(
+        "/api/notifications/whatsapp/operators",
+        json={"phone": "5511999999999"},  # missing +
     )
     assert res.status_code == 422
 
 
-def test_put_with_null_token_keeps_existing(client_admin: TestClient) -> None:
-    # First set a token.
-    client_admin.put(
-        "/api/notifications/whatsapp",
-        json={
-            "enabled": False,
-            "phone_number_id": "111",
-            "access_token": "FIRST_TOKEN",
-            "template_name": "t",
-            "template_language": "pt_BR",
-            "recipients": ["+5511999999999"],
-            "include_image": True,
-        },
+def test_add_operator_conflicts_across_tenant(
+    client_admin: TestClient, test_db: sessionmaker[Session]
+) -> None:
+    # Another tenant already owns this phone.
+    with test_db() as session:
+        session.add(Tenant(id=OTHER_TENANT_ID, name="OTHER"))
+        session.add(
+            WhatsAppOperator(tenant_id=OTHER_TENANT_ID, phone="+5511777777777")
+        )
+        session.commit()
+
+    res = client_admin.post(
+        "/api/notifications/whatsapp/operators",
+        json={"phone": "+5511777777777"},
     )
-    # Then update everything *except* the token (null).
-    res = client_admin.put(
-        "/api/notifications/whatsapp",
-        json={
-            "enabled": False,
-            "phone_number_id": "222",
-            "access_token": None,
-            "template_name": "t2",
-            "template_language": "pt_BR",
-            "recipients": ["+5511888888888"],
-            "include_image": False,
-        },
+    assert res.status_code == 409
+    assert "tenant" in res.text.lower()
+
+
+def test_toggle_and_delete_operator(client_admin: TestClient) -> None:
+    created = client_admin.post(
+        "/api/notifications/whatsapp/operators",
+        json={"phone": "+5511999999999", "name": "Ana"},
+    ).json()
+    op_id = created["id"]
+
+    patched = client_admin.patch(
+        f"/api/notifications/whatsapp/operators/{op_id}",
+        json={"enabled": False},
     )
-    assert res.status_code == 200
-    assert res.json()["has_token"] is True
-    assert res.json()["phone_number_id"] == "222"
-    assert res.json()["recipients"] == ["+5511888888888"]
+    assert patched.status_code == 200
+    assert patched.json()["enabled"] is False
+
+    deleted = client_admin.delete(
+        f"/api/notifications/whatsapp/operators/{op_id}"
+    )
+    assert deleted.status_code == 204
+    assert client_admin.get("/api/notifications/whatsapp").json()["operators"] == []
 
 
 def test_put_teams_with_null_webhook_keeps_existing(
@@ -333,15 +348,7 @@ def test_viewer_cannot_access(client_viewer: TestClient) -> None:
     assert (
         client_viewer.put(
             "/api/notifications/whatsapp",
-            json={
-                "enabled": False,
-                "phone_number_id": None,
-                "access_token": None,
-                "template_name": None,
-                "template_language": "pt_BR",
-                "recipients": [],
-                "include_image": True,
-            },
+            json={"enabled": False, "include_image": True},
         ).status_code
         == 403
     )

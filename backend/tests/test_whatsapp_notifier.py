@@ -2,13 +2,15 @@
 
 Covers:
 - E.164 validator
-- `_dispatch` skips when config disabled / incomplete
-- `_dispatch` happy path: media upload + per-recipient send
+- `_dispatch` skips when config disabled / missing / no operators
+- `_dispatch` happy path: media upload + per-operator send (global creds)
+- disabled operators are not sent to
 - `send_test` returns Meta error verbatim on 4xx
 - `notify_async` snapshots the alert and submits to executor
 
 Tests use an in-memory SQLite DB and `httpx.MockTransport` so they run
-without network and without touching the real Postgres.
+without network and without touching the real Postgres. Meta credentials are
+global (settings) and monkeypatched per test.
 """
 
 from __future__ import annotations
@@ -19,15 +21,13 @@ from typing import Iterator
 
 import httpx
 import pytest
-from cryptography.fernet import Fernet
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import db
 from app.config import settings
 from app.db.base import Base
-from app.db.entities import Camera, Site, Tenant, WhatsAppConfig
-from app.services import crypto
+from app.db.entities import Camera, Site, Tenant, WhatsAppConfig, WhatsAppOperator
 from app.services.whatsapp_notifier import WhatsAppNotifier, is_e164
 from app.storage import BlobStore
 
@@ -54,12 +54,15 @@ class FakeBlobStore(BlobStore):  # type: ignore[misc]
 
 
 @pytest.fixture()
-def fernet_key(monkeypatch: pytest.MonkeyPatch) -> str:
-    key = Fernet.generate_key().decode()
-    monkeypatch.setattr(settings, "NOTIFY_ENCRYPTION_KEY", key)
-    # crypto._fernet is lru-cached; reset between tests so the new key wins.
-    crypto._fernet.cache_clear()
-    return key
+def wa_creds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configure the single shared platform Meta number via settings."""
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "111222333")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "META_TOKEN")
+    monkeypatch.setattr(settings, "WHATSAPP_APP_SECRET", "appsecret")
+    monkeypatch.setattr(settings, "WHATSAPP_VERIFY_TOKEN", "verifytoken")
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_NAME", "safety_alert_pt")
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_LANGUAGE", "pt_BR")
+    monkeypatch.setattr(settings, "LOCAL_TIMEZONE", "America/Sao_Paulo")
 
 
 @pytest.fixture()
@@ -89,9 +92,11 @@ def test_db(monkeypatch: pytest.MonkeyPatch) -> Iterator[sessionmaker[Session]]:
 
 @pytest.fixture()
 def seeded_tenant(
-    test_db: sessionmaker[Session], fernet_key: str
+    test_db: sessionmaker[Session], wa_creds: None
 ) -> tuple[str, str, str]:
-    """Insert tenant + site + camera + WhatsAppConfig. Returns (tenant_id, camera_id, frame_path)."""
+    """Insert tenant + site + camera + WhatsAppConfig + 2 operators.
+
+    Returns (tenant_id, camera_id, frame_path)."""
     with test_db() as session:
         tenant = Tenant(name="ACME")
         session.add(tenant)
@@ -107,22 +112,24 @@ def seeded_tenant(
         )
         session.add(camera)
         session.flush()
-        cfg = WhatsAppConfig(
-            tenant_id=tenant.id,
-            enabled=True,
-            phone_number_id="111222333",
-            access_token_encrypted=crypto.encrypt_secret("META_TOKEN"),
-            template_name="safety_alert_pt",
-            template_language="pt_BR",
-            recipients=["+5511999999999", "+5511888888888"],
-            include_image=True,
+        session.add(
+            WhatsAppConfig(tenant_id=tenant.id, enabled=True, include_image=True)
         )
-        session.add(cfg)
+        session.add(
+            WhatsAppOperator(
+                tenant_id=tenant.id, phone="+5511999999999", name="Ana", enabled=True
+            )
+        )
+        session.add(
+            WhatsAppOperator(
+                tenant_id=tenant.id, phone="+5511888888888", name=None, enabled=True
+            )
+        )
         session.commit()
         return str(tenant.id), str(camera.id), "fakeframe.jpg"
 
 
-def _make_alert_snapshot(camera_id: str, frame_path: str):
+def _make_alert_snapshot(camera_id: str, frame_path: str | None):
     from app.services.whatsapp_notifier import _AlertSnapshot
 
     return _AlertSnapshot(
@@ -159,7 +166,7 @@ def test_is_e164(value: str, expected: bool) -> None:
 
 
 def test_dispatch_skips_when_config_missing(
-    test_db: sessionmaker[Session], fernet_key: str
+    test_db: sessionmaker[Session], wa_creds: None
 ) -> None:
     # Tenant + camera exist but no WhatsAppConfig row.
     with test_db() as session:
@@ -189,7 +196,42 @@ def test_dispatch_skips_when_config_missing(
     assert captured == []  # no HTTP calls when config missing
 
 
-def test_dispatch_happy_path_uploads_once_and_sends_per_recipient(
+def test_dispatch_skips_when_no_operators(
+    test_db: sessionmaker[Session], wa_creds: None
+) -> None:
+    with test_db() as session:
+        tenant = Tenant(name="NoOps")
+        session.add(tenant)
+        session.flush()
+        site = Site(tenant_id=tenant.id, name="S")
+        session.add(site)
+        session.flush()
+        camera = Camera(site_id=site.id, name="C", source_kind="rtsp", rtsp_url="x")
+        session.add(camera)
+        session.flush()
+        session.add(
+            WhatsAppConfig(tenant_id=tenant.id, enabled=True, include_image=True)
+        )
+        session.commit()
+        camera_id = str(camera.id)
+
+    captured: list[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured.append(req)
+        return httpx.Response(200, json={"messages": [{"id": "m1"}]})
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://graph.test"
+    )
+    notifier = WhatsAppNotifier(FakeBlobStore(), http_client=client, max_workers=1)
+    notifier._dispatch(_make_alert_snapshot(camera_id, None))
+    notifier.shutdown(wait=False)
+
+    assert captured == []
+
+
+def test_dispatch_happy_path_uploads_once_and_sends_per_operator(
     seeded_tenant: tuple[str, str, str],
     test_db: sessionmaker[Session],
 ) -> None:
@@ -211,10 +253,9 @@ def test_dispatch_happy_path_uploads_once_and_sends_per_recipient(
     notifier._dispatch(_make_alert_snapshot(camera_id, frame_path))
     notifier.shutdown(wait=False)
 
-    # 1 upload + 2 sends (one per recipient)
+    # 1 upload + 2 sends (one per enabled operator), via the global number.
     assert len(captured) == 3
     assert captured[0].url.path.endswith("/111222333/media")
-    # both subsequent requests are /messages with media_id referenced
     for req in captured[1:]:
         assert req.url.path.endswith("/111222333/messages")
         body = json.loads(req.content)
@@ -228,8 +269,40 @@ def test_dispatch_happy_path_uploads_once_and_sends_per_recipient(
         assert [p["text"] for p in body_comp["parameters"]] == [
             "Portao Norte",
             "Capacete",
-            "25/05/2026 14:30",
+            "25/05/2026 11:30",
         ]
+
+
+def test_dispatch_skips_disabled_operators(
+    seeded_tenant: tuple[str, str, str],
+    test_db: sessionmaker[Session],
+) -> None:
+    tenant_id, camera_id, frame_path = seeded_tenant
+    with test_db() as session:
+        op = (
+            session.query(WhatsAppOperator)
+            .filter(WhatsAppOperator.phone == "+5511888888888")
+            .first()
+        )
+        assert op is not None
+        op.enabled = False
+        session.commit()
+
+    sent_to: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/messages"):
+            sent_to.append(json.loads(req.content)["to"])
+        return httpx.Response(200, json={"messages": [{"id": "x"}]})
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://graph.test"
+    )
+    notifier = WhatsAppNotifier(FakeBlobStore(), http_client=client, max_workers=1)
+    notifier._dispatch(_make_alert_snapshot(camera_id, None))
+    notifier.shutdown(wait=False)
+
+    assert sent_to == ["5511999999999"]
 
 
 def test_dispatch_skips_when_disabled(
@@ -269,7 +342,13 @@ def test_dispatch_text_only_when_include_image_false(
         cfg = session.query(WhatsAppConfig).first()
         assert cfg is not None
         cfg.include_image = False
-        cfg.recipients = ["+5511999999999"]
+        # keep only one operator so the assertion is unambiguous
+        op = (
+            session.query(WhatsAppOperator)
+            .filter(WhatsAppOperator.phone == "+5511888888888")
+            .first()
+        )
+        session.delete(op)
         session.commit()
 
     requests: list[httpx.Request] = []
@@ -291,6 +370,58 @@ def test_dispatch_text_only_when_include_image_false(
     body = json.loads(requests[0].content)
     components = body["template"]["components"]
     assert all(c["type"] != "header" for c in components)
+
+
+def test_dispatch_review_includes_buttons(
+    seeded_tenant: tuple[str, str, str],
+    test_db: sessionmaker[Session],
+) -> None:
+    tenant_id, camera_id, frame_path = seeded_tenant
+    sent: list[dict] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/messages"):
+            sent.append(json.loads(req.content))
+        return httpx.Response(200, json={"messages": [{"id": "x"}]})
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://graph.test"
+    )
+    notifier = WhatsAppNotifier(FakeBlobStore(), http_client=client, max_workers=1)
+    snap = _make_alert_snapshot(camera_id, None)
+    notifier._dispatch(snap, with_buttons=True)
+    notifier.shutdown(wait=False)
+
+    assert sent  # one per enabled operator
+    btns = [c for c in sent[0]["template"]["components"] if c["type"] == "button"]
+    assert [c["sub_type"] for c in btns] == ["quick_reply", "quick_reply"]
+    assert btns[0]["index"] == "0"
+    assert btns[0]["parameters"][0]["payload"] == f"confirm:{snap.id}"
+    assert btns[1]["index"] == "1"
+    assert btns[1]["parameters"][0]["payload"] == f"false_positive:{snap.id}"
+
+
+def test_dispatch_default_has_no_buttons(
+    seeded_tenant: tuple[str, str, str],
+    test_db: sessionmaker[Session],
+) -> None:
+    tenant_id, camera_id, frame_path = seeded_tenant
+    sent: list[dict] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/messages"):
+            sent.append(json.loads(req.content))
+        return httpx.Response(200, json={"messages": [{"id": "x"}]})
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://graph.test"
+    )
+    notifier = WhatsAppNotifier(FakeBlobStore(), http_client=client, max_workers=1)
+    notifier._dispatch(_make_alert_snapshot(camera_id, None))
+    notifier.shutdown(wait=False)
+
+    assert sent
+    assert not [c for c in sent[0]["template"]["components"] if c["type"] == "button"]
 
 
 # ---------- send_test ----------
@@ -319,16 +450,11 @@ def test_send_test_returns_meta_error_on_400(
     assert "invalid template" in (result.get("error") or "")
 
 
-def test_send_test_does_not_require_saved_recipients(
+def test_send_test_uses_global_creds(
     seeded_tenant: tuple[str, str, str],
     test_db: sessionmaker[Session],
 ) -> None:
     tenant_id, _camera_id, _ = seeded_tenant
-    with test_db() as session:
-        cfg = session.query(WhatsAppConfig).first()
-        assert cfg is not None
-        cfg.recipients = []
-        session.commit()
 
     requests: list[httpx.Request] = []
 
@@ -345,7 +471,23 @@ def test_send_test_does_not_require_saved_recipients(
 
     assert result == {"ok": True, "message_id": "wamid-test"}
     assert len(requests) == 1
+    assert requests[0].url.path.endswith("/111222333/messages")
     assert json.loads(requests[0].content)["to"] == "5511999999999"
+
+
+def test_send_test_fails_when_not_connected(
+    test_db: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "WHATSAPP_PHONE_NUMBER_ID", "")
+    monkeypatch.setattr(settings, "WHATSAPP_ACCESS_TOKEN", "")
+    monkeypatch.setattr(settings, "WHATSAPP_TEMPLATE_NAME", "")
+
+    notifier = WhatsAppNotifier(FakeBlobStore(), max_workers=1)
+    result = notifier.send_test(tenant_id="t", phone_number="+5511999999999")
+    notifier.shutdown(wait=False)
+
+    assert result["ok"] is False
+    assert "WHATSAPP_PHONE_NUMBER_ID" in (result.get("error") or "")
 
 
 # ---------- notify_async ----------
@@ -368,7 +510,6 @@ def test_notify_async_does_not_raise_when_executor_closed(
     )
     notifier.shutdown(wait=True)
 
-    # Build a fake "alert-like" object with the attributes the snapshot uses.
     fake_alert = type(
         "_Alert",
         (),

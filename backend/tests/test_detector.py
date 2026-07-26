@@ -1,4 +1,7 @@
-"""Tests for SafetyDetector: 6-class PPE model, Portuguese labels, annotation.
+"""Tests for SafetyDetector: 2-class PPE model, Portuguese labels, annotation.
+
+Scope is capacete + colete only (canteiro civil); oculos/mascara/luvas/botas
+were dropped from the model on purpose, see docs/roadmap-tcc-outubro-2026.md.
 
 Covers: MODL-01 (model loading), MODL-02 (Portuguese labels).
 """
@@ -7,26 +10,29 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import cv2
 import numpy as np
 import pytest
 
 from app.detector import (
     EPI_CLASSES,
     EPI_LABELS_PT,
+    GREEN,
+    LABEL_BG,
+    RED,
     SafetyDetector,
 )
 from app.models import Detection
 
+# Class names of the trained weights (ml/configs/ppe-cctv-v1.yaml).
+MODEL_NAMES = {0: "helmet", 1: "vest"}
+
 
 class TestModelLoadsPpeClasses:
-    """MODL-01: Detector loads the 6-class PPE model with correct class mapping."""
+    """MODL-01: Detector loads the 2-class PPE model with correct class mapping."""
 
-    def test_epi_classes_has_6_entries(self) -> None:
-        """EPI_CLASSES maps 6 integer IDs to Portuguese keys."""
-        assert len(EPI_CLASSES) == 6
-        expected_keys = {"luvas", "colete", "protecao_ocular", "capacete", "mascara", "calcado_seguranca"}
-        assert set(EPI_CLASSES.values()) == expected_keys
+    def test_epi_classes_has_2_entries(self) -> None:
+        """EPI_CLASSES maps the 2 weight indices to Portuguese keys."""
+        assert EPI_CLASSES == {0: "capacete", 1: "colete"}
 
     def test_model_loads_ppe_classes(self) -> None:
         """SafetyDetector.load_model loads best.pt and validates class names."""
@@ -34,10 +40,7 @@ class TestModelLoadsPpeClasses:
 
         # Mock YOLO so we don't need the real model file
         mock_model = MagicMock()
-        mock_model.names = {
-            0: "Gloves", 1: "Vest", 2: "goggles",
-            3: "helmet", 4: "mask", 5: "safety_shoe",
-        }
+        mock_model.names = MODEL_NAMES
 
         with patch("app.detector.YOLO", return_value=mock_model):
             detector.load_model()
@@ -50,15 +53,12 @@ class TestModelLoadsPpeClasses:
 
         # Set up mock model
         mock_model = MagicMock()
-        mock_model.names = {
-            0: "Gloves", 1: "Vest", 2: "goggles",
-            3: "helmet", 4: "mask", 5: "safety_shoe",
-        }
+        mock_model.names = MODEL_NAMES
 
         # Create mock detection result
         mock_box = MagicMock()
         mock_box.cls = [MagicMock()]
-        mock_box.cls[0].item.return_value = 3  # helmet -> capacete
+        mock_box.cls[0].item.return_value = 0  # helmet -> capacete
         mock_box.conf = [MagicMock()]
         mock_box.conf[0].item.return_value = 0.92
         mock_box.xyxy = [MagicMock()]
@@ -85,7 +85,7 @@ class TestModelLoadsPpeClasses:
         detector = SafetyDetector()
 
         mock_model = MagicMock()
-        mock_model.names = {0: "Gloves", 99: "unknown"}
+        mock_model.names = MODEL_NAMES
 
         mock_box = MagicMock()
         mock_box.cls = [MagicMock()]
@@ -121,22 +121,20 @@ class TestPortugueseLabels:
 
     def test_labels_are_capitalized_portuguese(self) -> None:
         """Portuguese labels start with uppercase and use correct translations."""
-        expected = {
-            "luvas": "Luvas",
-            "colete": "Colete",
-            "protecao_ocular": "Protecao ocular",
-            "capacete": "Capacete",
-            "mascara": "Mascara",
-            "calcado_seguranca": "Calcado de seguranca",
-        }
-        assert EPI_LABELS_PT == expected
+        assert EPI_LABELS_PT == {"capacete": "Capacete", "colete": "Colete"}
+
+
+def _has_color(frame: np.ndarray, bgr: tuple[int, int, int]) -> bool:
+    """True if any pixel is exactly this BGR triple (no antialiasing is used)."""
+    return bool((frame == np.array(bgr, dtype=np.uint8)).all(axis=2).any())
 
 
 class TestAnnotateFrame:
     """Annotation uses green color and Portuguese labels."""
 
     def test_annotate_uses_green_and_portuguese(self) -> None:
-        """annotate_frame renders Portuguese label + confidence with green boxes."""
+        """annotate_frame draws a green box + green label chip, no red, when
+        nothing is missing."""
         detector = SafetyDetector()
         frame = np.zeros((480, 640, 3), dtype=np.uint8)
 
@@ -149,10 +147,15 @@ class TestAnnotateFrame:
         # Annotated frame should differ from original (has drawn rectangles/text)
         assert not np.array_equal(annotated, frame)
 
-        # Check that green pixels exist (OpenCV uses BGR: green = (0, 255, 0))
-        green_mask = (annotated[:, :, 1] == 255) & (annotated[:, :, 0] == 0) & (annotated[:, :, 2] == 0)
-        assert green_mask.any(), "Expected green color in annotation"
+        assert _has_color(annotated, GREEN), "Expected green bbox in annotation"
+        assert _has_color(annotated, LABEL_BG), "Expected green label chip"
+        assert not _has_color(annotated, RED), "No red without missing EPIs"
 
-        # No red pixels should exist (we removed RED constant)
-        red_mask = (annotated[:, :, 2] == 255) & (annotated[:, :, 0] == 0) & (annotated[:, :, 1] == 0)
-        assert not red_mask.any(), "Should not have red color in annotation"
+    def test_annotate_marks_missing_epi_in_red(self) -> None:
+        """missing_epis is the only path that paints red (Portuguese label)."""
+        detector = SafetyDetector()
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        annotated = detector.annotate_frame(frame, [], missing_epis={"colete"})
+
+        assert _has_color(annotated, RED), "Expected red marker for missing EPI"

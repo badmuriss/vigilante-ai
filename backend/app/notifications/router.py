@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentUser, require_role
+from app.config import settings
 from app.db.base import get_session
 from app.notifications.schemas import (
     TeamsConfigResponse,
@@ -19,10 +20,17 @@ from app.notifications.schemas import (
     TeamsTestResponse,
     WhatsAppConfigResponse,
     WhatsAppConfigUpdateRequest,
+    WhatsAppOperatorCreateRequest,
+    WhatsAppOperatorOut,
+    WhatsAppOperatorUpdateRequest,
     WhatsAppTestRequest,
     WhatsAppTestResponse,
 )
-from app.repositories import TeamsConfigRepository, WhatsAppConfigRepository
+from app.repositories import (
+    TeamsConfigRepository,
+    WhatsAppConfigRepository,
+    WhatsAppOperatorRepository,
+)
 from app.services.crypto import (
     EncryptionUnavailableError,
     encrypt_secret,
@@ -35,27 +43,31 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 _ADMIN_ONLY = require_role("admin")
 
 
-def _to_response(cfg) -> WhatsAppConfigResponse:  # type: ignore[no-untyped-def]
-    if cfg is None:
-        return WhatsAppConfigResponse(
-            enabled=False,
-            phone_number_id=None,
-            has_token=False,
-            template_name=None,
-            template_language="pt_BR",
-            recipients=[],
-            include_image=True,
-        )
+def _wa_connected() -> bool:
+    """True when the platform's shared Meta number is fully configured."""
+    return bool(
+        settings.WHATSAPP_PHONE_NUMBER_ID
+        and settings.WHATSAPP_ACCESS_TOKEN
+        and settings.WHATSAPP_TEMPLATE_NAME
+    )
+
+
+def _operator_out(op) -> WhatsAppOperatorOut:  # type: ignore[no-untyped-def]
+    return WhatsAppOperatorOut(
+        id=str(op.id), phone=op.phone, name=op.name, enabled=op.enabled
+    )
+
+
+def _to_response(cfg, operators) -> WhatsAppConfigResponse:  # type: ignore[no-untyped-def]
+    connected = _wa_connected()
+    stored_enabled = bool(cfg.enabled) if cfg is not None else False
     return WhatsAppConfigResponse(
-        enabled=cfg.enabled,
-        phone_number_id=cfg.phone_number_id,
-        has_token=bool(cfg.access_token_encrypted),
-        template_name=cfg.template_name,
-        template_language=cfg.template_language,
-        recipients=list(cfg.recipients or []),
-        include_image=cfg.include_image,
-        has_webhook_verify_token=bool(cfg.webhook_verify_token_encrypted),
-        has_app_secret=bool(cfg.app_secret_encrypted),
+        # Effective enabled: a tenant can't be "on" while the platform number is
+        # not configured. Avoids a stranded enabled=true the UI can't toggle off.
+        enabled=stored_enabled and connected,
+        include_image=bool(cfg.include_image) if cfg is not None else True,
+        connected=connected,
+        operators=[_operator_out(o) for o in operators],
     )
 
 
@@ -81,7 +93,8 @@ def get_whatsapp_config(
     session: Session = Depends(get_session),
 ) -> WhatsAppConfigResponse:
     cfg = WhatsAppConfigRepository(session).get_for_tenant(user.tenant_id)
-    return _to_response(cfg)
+    operators = WhatsAppOperatorRepository(session).list_for_tenant(user.tenant_id)
+    return _to_response(cfg, operators)
 
 
 @router.put("/whatsapp", response_model=WhatsAppConfigResponse)
@@ -90,99 +103,74 @@ def put_whatsapp_config(
     user: CurrentUser = Depends(_ADMIN_ONLY),
     session: Session = Depends(get_session),
 ) -> WhatsAppConfigResponse:
+    if req.enabled and not _wa_connected():
+        raise HTTPException(
+            status_code=400,
+            detail="Credenciais Meta da plataforma não configuradas no servidor.",
+        )
     repo = WhatsAppConfigRepository(session)
-    existing = repo.get_for_tenant(user.tenant_id)
-
-    # access_token semantics:
-    #   None      -> keep previous (no change)
-    #   ""        -> clear
-    #   <string>  -> encrypt + store
-    if req.access_token is None:
-        token_blob: str | None = None  # signals "keep existing" to repo.upsert
-    elif req.access_token == "":
-        token_blob = ""  # explicit clear sent as empty ciphertext
-    else:
-        if not encryption_available():
-            raise HTTPException(
-                status_code=503,
-                detail="Server encryption key not configured; cannot store WhatsApp token",
-            )
-        try:
-            token_blob = encrypt_secret(req.access_token)
-        except EncryptionUnavailableError as exc:
-            raise HTTPException(status_code=503, detail=str(exc))
-
-    # If the operator wants notifications enabled, they must give us a token
-    # AND the row must end up with a token. Refuse otherwise to avoid the UI
-    # silently saving a half-configured row.
-    if req.enabled:
-        existing_token = (
-            existing.access_token_encrypted if existing is not None else ""
-        ) or ""
-        effective_token = token_blob if token_blob is not None else existing_token
-        if not effective_token:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot enable WhatsApp without an access token",
-            )
-        if not req.phone_number_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot enable WhatsApp without a phone_number_id",
-            )
-        if not req.template_name:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot enable WhatsApp without a template_name",
-            )
-        if not req.recipients:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot enable WhatsApp without at least one recipient",
-            )
-
-    # Webhook secrets follow the same None=keep / ""=clear / value=encrypt rules.
-    def _encrypt_optional(value: str | None) -> str | None:
-        if value is None:
-            return None
-        if value == "":
-            return ""
-        if not encryption_available():
-            raise HTTPException(
-                status_code=503,
-                detail="Server encryption key not configured; cannot store secret",
-            )
-        try:
-            return encrypt_secret(value)
-        except EncryptionUnavailableError as exc:
-            raise HTTPException(status_code=503, detail=str(exc))
-
-    verify_blob = _encrypt_optional(req.webhook_verify_token)
-    app_secret_blob = _encrypt_optional(req.app_secret)
-
-    cfg = repo.upsert(
+    repo.upsert(
         tenant_id=user.tenant_id,
         enabled=req.enabled,
-        phone_number_id=req.phone_number_id,
-        access_token_encrypted=token_blob,
-        template_name=req.template_name,
-        template_language=req.template_language,
-        recipients=req.recipients,
         include_image=req.include_image,
-        webhook_verify_token_encrypted=verify_blob,
-        app_secret_encrypted=app_secret_blob,
     )
+    session.commit()
+    cfg = repo.get_for_tenant(user.tenant_id)
+    operators = WhatsAppOperatorRepository(session).list_for_tenant(user.tenant_id)
+    return _to_response(cfg, operators)
+
+
+@router.post("/whatsapp/operators", response_model=WhatsAppOperatorOut, status_code=201)
+def add_whatsapp_operator(
+    req: WhatsAppOperatorCreateRequest,
+    user: CurrentUser = Depends(_ADMIN_ONLY),
+    session: Session = Depends(get_session),
+) -> WhatsAppOperatorOut:
+    repo = WhatsAppOperatorRepository(session)
     try:
+        op = repo.add(user.tenant_id, phone=req.phone, name=req.name)
         session.commit()
     except IntegrityError:
-        # phone_number_id is globally unique (one Meta number -> one tenant).
+        # `phone` is globally unique — an operator belongs to exactly one tenant.
         session.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Este phone_number_id já está vinculado a outro tenant.",
+            detail="Este número já está vinculado a outro tenant.",
         )
-    session.refresh(cfg)
-    return _to_response(cfg)
+    session.refresh(op)
+    return _operator_out(op)
+
+
+@router.patch(
+    "/whatsapp/operators/{operator_id}", response_model=WhatsAppOperatorOut
+)
+def update_whatsapp_operator(
+    operator_id: str,
+    req: WhatsAppOperatorUpdateRequest,
+    user: CurrentUser = Depends(_ADMIN_ONLY),
+    session: Session = Depends(get_session),
+) -> WhatsAppOperatorOut:
+    repo = WhatsAppOperatorRepository(session)
+    op = repo.update(
+        user.tenant_id, operator_id, enabled=req.enabled, name=req.name
+    )
+    if op is None:
+        raise HTTPException(status_code=404, detail="Operador não encontrado.")
+    session.commit()
+    session.refresh(op)
+    return _operator_out(op)
+
+
+@router.delete("/whatsapp/operators/{operator_id}", status_code=204)
+def delete_whatsapp_operator(
+    operator_id: str,
+    user: CurrentUser = Depends(_ADMIN_ONLY),
+    session: Session = Depends(get_session),
+) -> None:
+    repo = WhatsAppOperatorRepository(session)
+    if not repo.remove(user.tenant_id, operator_id):
+        raise HTTPException(status_code=404, detail="Operador não encontrado.")
+    session.commit()
 
 
 @router.post("/whatsapp/test", response_model=WhatsAppTestResponse)

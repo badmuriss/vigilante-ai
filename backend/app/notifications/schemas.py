@@ -9,54 +9,64 @@ from pydantic import BaseModel, Field, field_validator
 from app.services.whatsapp_notifier import is_e164
 
 
+class WhatsAppOperatorOut(BaseModel):
+    """An operator (phone) that acts on behalf of the tenant over WhatsApp."""
+
+    id: str
+    phone: str
+    name: str | None
+    enabled: bool
+
+
 class WhatsAppConfigResponse(BaseModel):
-    """Public-facing config. `access_token` is NEVER returned — only
-    `has_token` so the UI can show "token configured" without exposing the
-    secret."""
+    """Public-facing config. Meta credentials are global (env) and never
+    returned — `connected` tells the UI whether the platform number is set up.
+    """
 
     enabled: bool
-    phone_number_id: str | None
-    has_token: bool
-    template_name: str | None
-    template_language: str
-    recipients: list[str]
     include_image: bool
-    # Inbound conversational webhook. Secrets never returned — only presence.
-    has_webhook_verify_token: bool = False
-    has_app_secret: bool = False
+    connected: bool
+    operators: list[WhatsAppOperatorOut] = Field(default_factory=list)
 
 
 class WhatsAppConfigUpdateRequest(BaseModel):
     enabled: bool = False
-    phone_number_id: str | None = Field(default=None, max_length=64)
-    # When omitted (None), keep the previously-stored token. When empty
-    # string, clear the token. Otherwise replace it with the new value.
-    access_token: str | None = Field(default=None, max_length=4096)
-    template_name: str | None = Field(default=None, max_length=128)
-    template_language: str = Field(default="pt_BR", max_length=16)
-    recipients: list[str] = Field(default_factory=list)
     include_image: bool = True
-    # Inbound webhook credentials (same None/""/value semantics as access_token).
-    webhook_verify_token: str | None = Field(default=None, max_length=512)
-    app_secret: str | None = Field(default=None, max_length=512)
 
-    @field_validator("recipients")
+
+class WhatsAppOperatorCreateRequest(BaseModel):
+    phone: str = Field(min_length=8, max_length=20)
+    name: str | None = Field(default=None, max_length=120)
+
+    @field_validator("phone")
     @classmethod
-    def _validate_recipients(cls, value: list[str]) -> list[str]:
-        for v in value:
-            if not is_e164(v):
-                raise ValueError(
-                    f"Recipient '{v}' is not a valid E.164 number "
-                    "(expected '+' followed by 7-15 digits, no leading zero)"
-                )
-        # de-dupe while preserving order
-        seen: set[str] = set()
-        out: list[str] = []
-        for v in value:
-            if v not in seen:
-                seen.add(v)
-                out.append(v)
-        return out
+    def _validate_phone(cls, value: str) -> str:
+        value = value.strip()
+        if not is_e164(value):
+            raise ValueError(
+                "phone must be in E.164 format (e.g. +5511999999999)"
+            )
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def _trim_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        trimmed = value.strip()
+        return trimmed or None
+
+
+class WhatsAppOperatorUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    name: str | None = Field(default=None, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def _trim_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return value.strip()
 
 
 class WhatsAppTestRequest(BaseModel):

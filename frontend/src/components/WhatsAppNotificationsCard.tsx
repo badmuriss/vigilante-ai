@@ -1,14 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Info, Plus, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronDown, Info, Plus, Send, Trash2, AlertTriangle } from "lucide-react";
 
 import {
+  addWhatsAppOperator,
   getWhatsAppConfig,
+  removeWhatsAppOperator,
   testWhatsApp,
   updateWhatsAppConfig,
+  updateWhatsAppOperator,
 } from "@/lib/api";
-import type { WhatsAppConfig } from "@/types";
+import type { WhatsAppConfig, WhatsAppOperator } from "@/types";
 
 const E164_REGEX = /^\+[1-9]\d{6,14}$/;
 const WHATSAPP_GREEN = "#25D366";
@@ -29,62 +32,31 @@ function WhatsAppGlyph({ size = 22 }: { size?: number }) {
   );
 }
 
-const TOKEN_SENTINEL_UNCHANGED = null;
-const TOKEN_SENTINEL_CLEAR = "";
-
-interface FormState {
-  enabled: boolean;
-  phoneNumberId: string;
-  templateName: string;
-  templateLanguage: string;
-  includeImage: boolean;
-  recipients: string[];
-  accessToken: string | null;
-  accessTokenDirty: boolean;
-  webhookVerifyToken: string | null;
-  webhookVerifyTokenDirty: boolean;
-  appSecret: string | null;
-  appSecretDirty: boolean;
-}
-
-function configToForm(cfg: WhatsAppConfig): FormState {
-  return {
-    enabled: cfg.enabled,
-    phoneNumberId: cfg.phone_number_id ?? "",
-    templateName: cfg.template_name ?? "",
-    templateLanguage: cfg.template_language || "pt_BR",
-    includeImage: cfg.include_image,
-    recipients: cfg.recipients,
-    accessToken: TOKEN_SENTINEL_UNCHANGED,
-    accessTokenDirty: false,
-    webhookVerifyToken: TOKEN_SENTINEL_UNCHANGED,
-    webhookVerifyTokenDirty: false,
-    appSecret: TOKEN_SENTINEL_UNCHANGED,
-    appSecretDirty: false,
-  };
-}
-
 export function WhatsAppNotificationsCard() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [form, setForm] = useState<FormState | null>(null);
-  const [hasToken, setHasToken] = useState(false);
-  const [hasWebhookToken, setHasWebhookToken] = useState(false);
-  const [hasAppSecret, setHasAppSecret] = useState(false);
-  const [newRecipient, setNewRecipient] = useState("");
+  const [enabled, setEnabled] = useState(false);
+  const [includeImage, setIncludeImage] = useState(true);
+  const [connected, setConnected] = useState(false);
+  const [operators, setOperators] = useState<WhatsAppOperator[]>([]);
+  const [newPhone, setNewPhone] = useState("");
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
   const [testRecipient, setTestRecipient] = useState("");
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [expanded, setExpanded] = useState(false);
 
+  function applyConfig(cfg: WhatsAppConfig) {
+    setEnabled(cfg.enabled);
+    setIncludeImage(cfg.include_image);
+    setConnected(cfg.connected);
+    setOperators(cfg.operators);
+  }
+
   useEffect(() => {
     getWhatsAppConfig()
-      .then((cfg) => {
-        setForm(configToForm(cfg));
-        setHasToken(cfg.has_token);
-        setHasWebhookToken(cfg.has_webhook_verify_token);
-        setHasAppSecret(cfg.has_app_secret);
-      })
+      .then(applyConfig)
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : "Erro ao carregar";
         setFeedback({ kind: "err", text: msg });
@@ -92,66 +64,65 @@ export function WhatsAppNotificationsCard() {
       .finally(() => setLoading(false));
   }, []);
 
-  function addRecipient() {
-    if (!form) return;
-    const trimmed = newRecipient.trim();
-    if (!trimmed) return;
-    if (!E164_REGEX.test(trimmed)) {
+  async function addOperator() {
+    const phone = newPhone.trim();
+    if (!phone) return;
+    if (!E164_REGEX.test(phone)) {
       setFeedback({
         kind: "err",
         text: "Número inválido. Use formato E.164 (ex: +5511999999999).",
       });
       return;
     }
-    if (form.recipients.includes(trimmed)) {
-      setNewRecipient("");
-      return;
-    }
-    setForm({ ...form, recipients: [...form.recipients, trimmed] });
-    setNewRecipient("");
+    setAdding(true);
     setFeedback(null);
+    try {
+      const op = await addWhatsAppOperator(phone, newName.trim() || null);
+      setOperators((prev) => [...prev, op]);
+      setNewPhone("");
+      setNewName("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao adicionar operador";
+      setFeedback({ kind: "err", text: msg });
+    } finally {
+      setAdding(false);
+    }
   }
 
-  function removeRecipient(num: string) {
-    if (!form) return;
-    setForm({ ...form, recipients: form.recipients.filter((r) => r !== num) });
+  async function removeOperator(id: string) {
+    const prev = operators;
+    setOperators((curr) => curr.filter((o) => o.id !== id));
+    try {
+      await removeWhatsAppOperator(id);
+    } catch (err) {
+      setOperators(prev);
+      const msg = err instanceof Error ? err.message : "Erro ao remover operador";
+      setFeedback({ kind: "err", text: msg });
+    }
+  }
+
+  async function toggleOperator(op: WhatsAppOperator) {
+    const next = !op.enabled;
+    setOperators((curr) =>
+      curr.map((o) => (o.id === op.id ? { ...o, enabled: next } : o)),
+    );
+    try {
+      await updateWhatsAppOperator(op.id, { enabled: next });
+    } catch (err) {
+      setOperators((curr) =>
+        curr.map((o) => (o.id === op.id ? { ...o, enabled: op.enabled } : o)),
+      );
+      const msg = err instanceof Error ? err.message : "Erro ao atualizar operador";
+      setFeedback({ kind: "err", text: msg });
+    }
   }
 
   async function onSave() {
-    if (!form) return;
     setSaving(true);
     setFeedback(null);
     try {
-      const tokenPayload = form.accessTokenDirty
-        ? form.accessToken === ""
-          ? TOKEN_SENTINEL_CLEAR
-          : form.accessToken
-        : TOKEN_SENTINEL_UNCHANGED;
-      const verifyPayload = form.webhookVerifyTokenDirty
-        ? form.webhookVerifyToken === ""
-          ? TOKEN_SENTINEL_CLEAR
-          : form.webhookVerifyToken
-        : TOKEN_SENTINEL_UNCHANGED;
-      const appSecretPayload = form.appSecretDirty
-        ? form.appSecret === ""
-          ? TOKEN_SENTINEL_CLEAR
-          : form.appSecret
-        : TOKEN_SENTINEL_UNCHANGED;
-      const cfg = await updateWhatsAppConfig({
-        enabled: form.enabled,
-        phone_number_id: form.phoneNumberId || null,
-        access_token: tokenPayload,
-        template_name: form.templateName || null,
-        template_language: form.templateLanguage || "pt_BR",
-        recipients: form.recipients,
-        include_image: form.includeImage,
-        webhook_verify_token: verifyPayload,
-        app_secret: appSecretPayload,
-      });
-      setForm(configToForm(cfg));
-      setHasToken(cfg.has_token);
-      setHasWebhookToken(cfg.has_webhook_verify_token);
-      setHasAppSecret(cfg.has_app_secret);
+      const cfg = await updateWhatsAppConfig({ enabled, include_image: includeImage });
+      applyConfig(cfg);
       setFeedback({ kind: "ok", text: "Configuração salva." });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao salvar";
@@ -162,7 +133,7 @@ export function WhatsAppNotificationsCard() {
   }
 
   async function onTest() {
-    if (!testRecipient || !form) return;
+    if (!testRecipient) return;
     if (!E164_REGEX.test(testRecipient.trim())) {
       setFeedback({
         kind: "err",
@@ -180,10 +151,7 @@ export function WhatsAppNotificationsCard() {
           text: `Mensagem de teste enviada${result.message_id ? ` (id: ${result.message_id})` : ""}.`,
         });
       } else {
-        setFeedback({
-          kind: "err",
-          text: result.error || "Falha ao enviar teste.",
-        });
+        setFeedback({ kind: "err", text: result.error || "Falha ao enviar teste." });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Erro ao enviar teste";
@@ -197,16 +165,6 @@ export function WhatsAppNotificationsCard() {
     return (
       <section className="card p-6">
         <p className="text-sm text-text-muted">Carregando notificações…</p>
-      </section>
-    );
-  }
-
-  if (!form) {
-    return (
-      <section className="card p-6">
-        <p className="text-sm text-text-muted">
-          {feedback?.text ?? "Não foi possível carregar a configuração."}
-        </p>
       </section>
     );
   }
@@ -240,8 +198,9 @@ export function WhatsAppNotificationsCard() {
               Notificações via WhatsApp
             </h2>
             <p className="mt-1 max-w-prose text-xs text-text-muted">
-              Quando um alerta é confirmado pela equipe, ele é enviado em segundo
-              plano para os números configurados via Meta WhatsApp Cloud API.
+              Cadastre os operadores do seu time. Eles recebem os alertas
+              confirmados e podem conversar com o assistente pelo WhatsApp, em
+              nome da sua organização — tudo pelo número único da plataforma.
             </p>
           </div>
         </div>
@@ -250,9 +209,10 @@ export function WhatsAppNotificationsCard() {
           onClick={(e) => e.stopPropagation()}
         >
           <Switch
-            checked={form.enabled}
-            onChange={(v) => setForm({ ...form, enabled: v })}
+            checked={enabled}
+            onChange={setEnabled}
             label="Habilitado"
+            disabled={!connected}
           />
           <button
             type="button"
@@ -278,280 +238,180 @@ export function WhatsAppNotificationsCard() {
 
       {expanded && (
         <>
-      {/* Conexão */}
-      <Section title="Conexão" description="Credenciais Meta WhatsApp Cloud API.">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="min-w-0">
-            <label className="label">Phone Number ID</label>
-            <input
-              className="input mt-1 mono-num"
-              value={form.phoneNumberId}
-              placeholder="123456789012345"
-              onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })}
-            />
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex items-baseline justify-between gap-2">
-              <label className="label">Access Token</label>
-              {hasToken && !form.accessTokenDirty && (
-                <span className="text-[10px] uppercase tracking-wider text-text-subtle">
-                  armazenado
+          {/* Status da plataforma */}
+          <Section
+            title="Conexão da plataforma"
+            description="O número/credenciais Meta são configurados no servidor (.env) e compartilhados por todos os tenants."
+          >
+            {connected ? (
+              <div className="flex items-center gap-2 text-sm text-success">
+                <CheckCircle2 size={16} strokeWidth={1.8} />
+                Plataforma conectada ao WhatsApp.
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 text-sm text-warning">
+                <AlertTriangle size={16} strokeWidth={1.8} className="mt-0.5 shrink-0" />
+                <span>
+                  Credenciais Meta não configuradas no servidor. Defina{" "}
+                  <span className="mono-num">VIGILANTE_WHATSAPP_*</span> no{" "}
+                  <span className="mono-num">.env</span> para habilitar.
                 </span>
-              )}
+              </div>
+            )}
+
+            <label className="mt-4 flex items-start gap-2 text-xs text-text-muted">
+              <input
+                type="checkbox"
+                className="mt-0.5 shrink-0"
+                checked={includeImage}
+                onChange={(e) => setIncludeImage(e.target.checked)}
+              />
+              <span>
+                Anexar foto do frame do alerta. O header do template precisa ser do
+                tipo <em>image</em>.
+              </span>
+            </label>
+          </Section>
+
+          {/* Operadores */}
+          <Section
+            title="Operadores"
+            description="Telefones (E.164) que recebem alertas e interagem com o assistente em nome da sua organização. Cada número pertence a um único tenant."
+          >
+            <div className="flex flex-wrap gap-2">
+              <input
+                className="input mono-num flex-1 sm:min-w-[200px] sm:max-w-[260px]"
+                value={newPhone}
+                placeholder="+5511999999999"
+                onChange={(e) => setNewPhone(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addOperator();
+                  }
+                }}
+              />
+              <input
+                className="input flex-1 sm:min-w-[160px] sm:max-w-[220px]"
+                value={newName}
+                placeholder="Nome (opcional)"
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addOperator();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn-secondary shrink-0"
+                onClick={addOperator}
+                disabled={adding || !newPhone.trim()}
+              >
+                <Plus size={14} strokeWidth={1.8} />
+                Adicionar
+              </button>
             </div>
-            <input
-              className="input mt-1"
-              type="password"
-              value={form.accessToken ?? ""}
-              placeholder={
-                hasToken ? "•••••••• (clique para substituir)" : "Cole o token Meta aqui"
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  accessToken: e.target.value,
-                  accessTokenDirty: true,
-                })
-              }
-            />
-            {hasToken && form.accessTokenDirty && form.accessToken === "" && (
-              <p className="mt-1 text-xs text-warning">
-                Token será removido ao salvar.
+
+            {operators.length > 0 ? (
+              <ul className="mt-3 space-y-1.5">
+                {operators.map((op) => (
+                  <li
+                    key={op.id}
+                    className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border bg-bg-sunken px-3 py-2 text-sm"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <div className="min-w-0">
+                      <span className="mono-num truncate">{op.phone}</span>
+                      {op.name && (
+                        <span className="ml-2 text-text-muted">{op.name}</span>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Switch
+                        checked={op.enabled}
+                        onChange={() => toggleOperator(op)}
+                        label={`Ativar ${op.phone}`}
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost h-7 px-2"
+                        onClick={() => removeOperator(op.id)}
+                        aria-label={`Remover ${op.phone}`}
+                      >
+                        <Trash2 size={14} strokeWidth={1.8} />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-xs text-text-subtle">
+                Nenhum operador cadastrado.
               </p>
             )}
+          </Section>
+
+          {/* Pré-requisitos */}
+          <div className="px-6 pb-6">
+            <div
+              className="flex gap-3 rounded-[var(--radius-md)] border bg-bg-sunken p-4"
+              style={{ borderColor: "var(--border)" }}
+            >
+              <Info size={14} strokeWidth={1.8} className="mt-0.5 shrink-0 text-text-muted" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-text">Como funciona</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-text-muted">
+                  <li>
+                    O número, token e template Meta são configurados uma vez no
+                    servidor — você só gerencia os operadores aqui.
+                  </li>
+                  <li>
+                    Cada operador recebe os alertas confirmados e pode mandar
+                    perguntas pelo WhatsApp para o mesmo assistente da plataforma.
+                  </li>
+                  <li>
+                    Um número só pode pertencer a um tenant. Tentar cadastrá-lo em
+                    outra organização retorna erro.
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
-        </div>
-      </Section>
 
-      {/* Template */}
-      <Section
-        title="Template"
-        description="Template aprovado no Meta Business Manager."
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="min-w-0">
-            <label className="label">Nome do template</label>
-            <input
-              className="input mt-1"
-              value={form.templateName}
-              placeholder="safety_alert_pt"
-              onChange={(e) => setForm({ ...form, templateName: e.target.value })}
-            />
-          </div>
-
-          <div className="min-w-0">
-            <label className="label">Idioma</label>
-            <input
-              className="input mt-1 mono-num"
-              value={form.templateLanguage}
-              placeholder="pt_BR"
-              onChange={(e) => setForm({ ...form, templateLanguage: e.target.value })}
-            />
-          </div>
-        </div>
-
-        <label className="mt-4 flex items-start gap-2 text-xs text-text-muted">
-          <input
-            type="checkbox"
-            className="mt-0.5 shrink-0"
-            checked={form.includeImage}
-            onChange={(e) => setForm({ ...form, includeImage: e.target.checked })}
-          />
-          <span>
-            Anexar foto do frame do alerta. O header do template precisa ser do tipo{" "}
-            <em>image</em>.
-          </span>
-        </label>
-      </Section>
-
-      {/* Destinatários */}
-      <Section
-        title="Destinatários"
-        description="Números no formato E.164 (ex: +5511999999999)."
-      >
-        <div className="flex flex-wrap gap-2">
-          <input
-            className="input mono-num flex-1 sm:min-w-[220px] sm:max-w-[320px]"
-            value={newRecipient}
-            placeholder="+5511999999999"
-            onChange={(e) => setNewRecipient(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addRecipient();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="btn-secondary shrink-0"
-            onClick={addRecipient}
-            disabled={!newRecipient.trim()}
+          {/* Footer: ações */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-4"
+            style={{ borderColor: "var(--border)", background: "var(--bg-sunken)" }}
           >
-            <Plus size={14} strokeWidth={1.8} />
-            Adicionar
-          </button>
-        </div>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={onSave}
+              disabled={saving}
+            >
+              {saving ? "Salvando…" : "Salvar configuração"}
+            </button>
 
-        {form.recipients.length > 0 ? (
-          <ul className="mt-3 space-y-1.5">
-            {form.recipients.map((num) => (
-              <li
-                key={num}
-                className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border bg-bg-sunken px-3 py-2 text-sm"
-                style={{ borderColor: "var(--border)" }}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                className="input mono-num w-[200px]"
+                value={testRecipient}
+                placeholder="+5511999999999"
+                onChange={(e) => setTestRecipient(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn-secondary shrink-0"
+                onClick={onTest}
+                disabled={testing || !testRecipient.trim()}
               >
-                <span className="mono-num truncate">{num}</span>
-                <button
-                  type="button"
-                  className="btn-ghost h-7 px-2"
-                  onClick={() => removeRecipient(num)}
-                  aria-label={`Remover ${num}`}
-                >
-                  <Trash2 size={14} strokeWidth={1.8} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-xs text-text-subtle">
-            Nenhum destinatário cadastrado.
-          </p>
-        )}
-      </Section>
-
-      {/* Webhook — assistente conversacional (inbound) */}
-      <Section
-        title="Assistente via WhatsApp (inbound)"
-        description="Permite receber perguntas pelo WhatsApp e respondê-las com o mesmo assistente da plataforma. Webhook URL: /api/webhooks/whatsapp"
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="min-w-0">
-            <div className="flex items-baseline justify-between gap-2">
-              <label className="label">Verify Token</label>
-              {hasWebhookToken && !form.webhookVerifyTokenDirty && (
-                <span className="text-[10px] uppercase tracking-wider text-text-subtle">
-                  armazenado
-                </span>
-              )}
+                <Send size={14} strokeWidth={1.8} />
+                {testing ? "Enviando…" : "Enviar teste"}
+              </button>
             </div>
-            <input
-              className="input mt-1"
-              type="password"
-              value={form.webhookVerifyToken ?? ""}
-              placeholder={
-                hasWebhookToken ? "•••••••• (clique para substituir)" : "Token que você define no Meta"
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  webhookVerifyToken: e.target.value,
-                  webhookVerifyTokenDirty: true,
-                })
-              }
-            />
           </div>
-
-          <div className="min-w-0">
-            <div className="flex items-baseline justify-between gap-2">
-              <label className="label">App Secret</label>
-              {hasAppSecret && !form.appSecretDirty && (
-                <span className="text-[10px] uppercase tracking-wider text-text-subtle">
-                  armazenado
-                </span>
-              )}
-            </div>
-            <input
-              className="input mt-1"
-              type="password"
-              value={form.appSecret ?? ""}
-              placeholder={
-                hasAppSecret ? "•••••••• (clique para substituir)" : "App Secret do app Meta"
-              }
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  appSecret: e.target.value,
-                  appSecretDirty: true,
-                })
-              }
-            />
-          </div>
-        </div>
-        <p className="mt-3 text-xs text-text-muted">
-          No Meta Developer Console, configure a Webhook URL apontando para{" "}
-          <span className="mono-num">/api/webhooks/whatsapp</span> com o mesmo
-          Verify Token e inscreva o campo <em>messages</em>. O App Secret valida a
-          assinatura HMAC de cada mensagem recebida.
-        </p>
-      </Section>
-
-      {/* Pré-requisitos */}
-      <div className="px-6 pb-6">
-        <div
-          className="flex gap-3 rounded-[var(--radius-md)] border bg-bg-sunken p-4"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <Info size={14} strokeWidth={1.8} className="mt-0.5 shrink-0 text-text-muted" />
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-text">Antes de habilitar</p>
-            <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-text-muted">
-              <li>
-                Crie um app em{" "}
-                <span className="mono-num">developers.facebook.com</span> com produto
-                WhatsApp.
-              </li>
-              <li>
-                Obtenha um <strong>token permanente</strong> via System User do Meta
-                Business.
-              </li>
-              <li>
-                Aprove um template do tipo <em>Utility</em> com 3 variáveis no corpo
-                (câmera, EPI, data/hora) e header opcional <em>image</em>.
-              </li>
-              <li>
-                O servidor precisa de{" "}
-                <span className="mono-num">VIGILANTE_NOTIFY_ENCRYPTION_KEY</span>{" "}
-                definido para armazenar o token criptografado.
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer: ações */}
-      <div
-        className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-4"
-        style={{ borderColor: "var(--border)", background: "var(--bg-sunken)" }}
-      >
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={onSave}
-          disabled={saving}
-        >
-          {saving ? "Salvando…" : "Salvar configuração"}
-        </button>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            className="input mono-num w-[200px]"
-            value={testRecipient}
-            placeholder="+5511999999999"
-            onChange={(e) => setTestRecipient(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn-secondary shrink-0"
-            onClick={onTest}
-            disabled={testing || !testRecipient.trim()}
-          >
-            <Send size={14} strokeWidth={1.8} />
-            {testing ? "Enviando…" : "Enviar teste"}
-          </button>
-        </div>
-      </div>
         </>
       )}
 
@@ -579,10 +439,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className="border-t px-6 py-5"
-      style={{ borderColor: "var(--border)" }}
-    >
+    <div className="border-t px-6 py-5" style={{ borderColor: "var(--border)" }}>
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-text">{title}</h3>
         {description && (
@@ -598,10 +455,12 @@ function Switch({
   checked,
   onChange,
   label,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -609,8 +468,9 @@ function Switch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors"
+      className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50"
       style={{
         background: checked ? "var(--accent)" : "var(--border-strong)",
         transitionDuration: "var(--dur-fast)",

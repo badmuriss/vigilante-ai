@@ -110,30 +110,24 @@ export interface ProbeResponse {
 
 // --- Notifications ---
 
+export interface WhatsAppOperator {
+  id: string;
+  phone: string;
+  name: string | null;
+  enabled: boolean;
+}
+
 export interface WhatsAppConfig {
   enabled: boolean;
-  phone_number_id: string | null;
-  has_token: boolean;
-  template_name: string | null;
-  template_language: string;
-  recipients: string[];
   include_image: boolean;
-  has_webhook_verify_token: boolean;
-  has_app_secret: boolean;
+  // Whether the platform's shared Meta number is configured server-side (env).
+  connected: boolean;
+  operators: WhatsAppOperator[];
 }
 
 export interface WhatsAppConfigUpdate {
   enabled: boolean;
-  phone_number_id: string | null;
-  // `null` keeps the existing token, "" clears it, any string replaces it.
-  access_token: string | null;
-  template_name: string | null;
-  template_language: string;
-  recipients: string[];
   include_image: boolean;
-  // `null` keeps existing, "" clears, any string replaces.
-  webhook_verify_token?: string | null;
-  app_secret?: string | null;
 }
 
 export interface WhatsAppTestResult {

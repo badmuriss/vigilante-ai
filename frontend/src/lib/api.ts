@@ -17,10 +17,11 @@ import type {
   User,
   WhatsAppConfig,
   WhatsAppConfigUpdate,
+  WhatsAppOperator,
   WhatsAppTestResult,
 } from "@/types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 const TOKEN_KEY = "vigilante.access_token";
 const REFRESH_KEY = "vigilante.refresh_token";
 
@@ -372,6 +373,37 @@ export async function testWhatsApp(phoneNumber: string): Promise<WhatsAppTestRes
   });
   if (!res.ok) throw await buildApiError(res, "WhatsApp test failed");
   return res.json();
+}
+
+export async function addWhatsAppOperator(
+  phone: string,
+  name: string | null,
+): Promise<WhatsAppOperator> {
+  const res = await apiFetch("/api/notifications/whatsapp/operators", {
+    method: "POST",
+    body: JSON.stringify({ phone, name }),
+  });
+  if (!res.ok) throw await buildApiError(res, "Failed to add operator");
+  return res.json();
+}
+
+export async function updateWhatsAppOperator(
+  id: string,
+  payload: { enabled?: boolean; name?: string | null },
+): Promise<WhatsAppOperator> {
+  const res = await apiFetch(`/api/notifications/whatsapp/operators/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await buildApiError(res, "Failed to update operator");
+  return res.json();
+}
+
+export async function removeWhatsAppOperator(id: string): Promise<void> {
+  const res = await apiFetch(`/api/notifications/whatsapp/operators/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw await buildApiError(res, "Failed to remove operator");
 }
 
 // --- Notifications (Microsoft Teams) ---

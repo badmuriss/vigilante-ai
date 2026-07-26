@@ -19,16 +19,30 @@ def _list_cameras(args: dict, ctx: ToolContext) -> ToolResult:
         payload={
             "cameras": [
                 {
-                    "id": r[0],
+                    "id": str(r[0]),
                     "nome": r[1],
                     "tipo": r[2],
                     "local": r[3],
-                    "ativa": bool(r[4]),
+                    "ativa_cadastro": bool(r[4]),
+                    **_runtime_status(str(r[0])),
                 }
                 for r in rows
             ]
         }
     )
+
+
+def _runtime_status(camera_id: str) -> dict:
+    """Mirror the status used by `/api/cameras` in the web dashboard."""
+    from app.main import registry
+
+    health = registry.get_health(camera_id)
+    return {
+        "rodando_agora": bool(registry.is_running(camera_id)),
+        "online_agora": bool(health.online) if health else False,
+        "ultima_falha": health.last_error if health else None,
+        "reconexoes": health.reconnect_count if health else 0,
+    }
 
 
 def _get_camera_status(args: dict, ctx: ToolContext) -> ToolResult:
@@ -64,7 +78,12 @@ def _get_camera_status(args: dict, ctx: ToolContext) -> ToolResult:
 CAMERA_TOOLS = [
     Tool(
         name="list_cameras",
-        description="Lista as câmeras do tenant com id, nome, tipo, local e se estão ativas.",
+        description=(
+            "Lista as câmeras do tenant com id, nome, tipo, local, status de "
+            "cadastro e status ao vivo. Para responder se a câmera está ativa "
+            "no momento, use `rodando_agora`/`online_agora`, não "
+            "`ativa_cadastro`."
+        ),
         parameters={"type": "object", "properties": {}},
         handler=_list_cameras,
     ),

@@ -4,6 +4,8 @@ Run inside the backend container:
     python -m scripts.seed_kb
 
 Idempotent — re-running skips unchanged documents (matched by content hash).
+When a seeded document changes, the previous global version is replaced so old
+chunks do not keep competing in retrieval.
 """
 
 from __future__ import annotations

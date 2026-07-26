@@ -33,9 +33,10 @@ KB_TOOLS = [
     Tool(
         name="search_knowledge_base",
         description=(
-            "Busca na base de conhecimento (manual do Vigilante.AI, NR-6 sobre "
-            "EPI e NR-18 sobre construção). Use para dúvidas de uso da plataforma "
-            "ou de normas de segurança. Retorna trechos numerados para citação."
+            "Busca na base de conhecimento (manual do Vigilante.AI e normas de "
+            "segurança do trabalho; a base inicial inclui NR-6 sobre EPI e NR-18 "
+            "sobre construção civil). Use para dúvidas de uso da plataforma ou de "
+            "normas de segurança. Retorna trechos numerados para citação."
         ),
         parameters={
             "type": "object",

@@ -2,7 +2,8 @@
 
 A Norma Regulamentadora 6 (NR-6) do Ministério do Trabalho e Emprego trata do
 Equipamento de Proteção Individual. Este resumo cobre os pontos mais
-relevantes para fiscalização de uso de EPI em obras e indústrias.
+relevantes para fiscalização de uso de EPI em ambientes de trabalho, incluindo
+obras, indústrias, galpões, áreas logísticas e frentes operacionais.
 
 ## O que é EPI
 
@@ -10,7 +11,7 @@ Considera-se Equipamento de Proteção Individual (EPI) todo dispositivo ou
 produto, de uso individual utilizado pelo trabalhador, destinado à proteção de
 riscos suscetíveis de ameaçar a segurança e a saúde no trabalho.
 
-Exemplos relevantes para canteiros de obra:
+Exemplos relevantes para ambientes monitorados:
 - **Capacete de segurança**: proteção do crânio contra impactos e queda de
   objetos.
 - **Colete / vestimenta de alta visibilidade**: torna o trabalhador visível,
@@ -58,8 +59,9 @@ fiscalização.
 O descumprimento da NR-6 sujeita a empresa a autuação pela fiscalização do
 trabalho, com multas que variam conforme a gravidade e o número de
 trabalhadores expostos. A ausência de fornecimento ou a não exigência do uso de
-EPI obrigatório é uma das infrações mais comuns em canteiros de obra e pode
-resultar em embargo ou interdição quando há risco grave e iminente.
+EPI obrigatório está entre as infrações comuns em ambientes operacionais,
+incluindo canteiros de obra, e pode resultar em embargo, interdição ou outras
+medidas fiscais quando há risco grave e iminente.
 
 A fiscalização contínua do uso de EPI — como a que o Vigilante.AI automatiza —
 é uma forma de evidenciar a exigência do uso pelo empregador (uma das

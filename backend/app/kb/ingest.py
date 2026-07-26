@@ -1,8 +1,10 @@
 """KB ingestion: markdown text -> chunks -> embeddings -> rows.
 
 Idempotent on `(tenant_id, content_hash)` — re-ingesting an unchanged file
-is a no-op. Embeddings are written through raw SQL because the pgvector
-column is not declared on the ORM model (keeps the model backend-agnostic).
+is a no-op. Seeded global docs can replace an older version with the same title
+and source so stale chunks do not keep competing in retrieval. Embeddings are
+written through raw SQL because the pgvector column is not declared on the ORM
+model (keeps the model backend-agnostic).
 """
 
 from __future__ import annotations
@@ -46,15 +48,41 @@ def ingest_text(
     title: str,
     source: str,
     tenant_id: str | None,
+    replace_existing: bool = False,
 ) -> IngestResult:
     """Ingest raw markdown. Caller owns the transaction (commits)."""
     content_hash = _hash(content)
 
+    tenant_filter = (
+        KBDocument.tenant_id.is_(tenant_id)
+        if tenant_id is None
+        else KBDocument.tenant_id == tenant_id
+    )
+
+    if replace_existing:
+        stale_docs = session.scalars(
+            select(KBDocument).where(
+                tenant_filter,
+                KBDocument.title == title,
+                KBDocument.source == source,
+                KBDocument.content_hash != content_hash,
+            )
+        ).all()
+        for stale_doc in stale_docs:
+            session.delete(stale_doc)
+        if stale_docs:
+            session.flush()
+            log.info(
+                "kb_ingest_replace",
+                title=title,
+                source=source,
+                tenant_id=tenant_id,
+                replaced=len(stale_docs),
+            )
+
     existing = session.scalar(
         select(KBDocument).where(
-            KBDocument.tenant_id.is_(tenant_id)
-            if tenant_id is None
-            else KBDocument.tenant_id == tenant_id,
+            tenant_filter,
             KBDocument.content_hash == content_hash,
         )
     )
@@ -131,6 +159,7 @@ def ingest_file(
     *,
     tenant_id: str | None,
     source: str,
+    replace_existing: bool = False,
 ) -> IngestResult:
     content = path.read_text(encoding="utf-8")
     return ingest_text(
@@ -139,6 +168,7 @@ def ingest_file(
         title=path.stem.replace("_", " ").title(),
         source=source,
         tenant_id=tenant_id,
+        replace_existing=replace_existing,
     )
 
 
@@ -150,12 +180,20 @@ _SOURCE_BY_STEM = {
 
 
 def seed_global_kb(session: Session, knowledge_dir: Path) -> list[IngestResult]:
-    """Ingest every *.md under `knowledge_dir` as global docs (tenant_id NULL)."""
+    """Ingest every *.md under `knowledge_dir` as replaceable global docs."""
     results: list[IngestResult] = []
     if not knowledge_dir.exists():
         log.warning("kb_seed_dir_missing", path=str(knowledge_dir))
         return results
     for md in sorted(knowledge_dir.glob("*.md")):
         source = _SOURCE_BY_STEM.get(md.stem, "manual")
-        results.append(ingest_file(session, md, tenant_id=None, source=source))
+        results.append(
+            ingest_file(
+                session,
+                md,
+                tenant_id=None,
+                source=source,
+                replace_existing=True,
+            )
+        )
     return results

@@ -1,9 +1,24 @@
 # Manual do Vigilante.AI
 
 O Vigilante.AI é uma plataforma de visão computacional que monitora o uso de
-EPI (Equipamento de Proteção Individual) em obras e indústrias. Conecta-se a
-câmeras existentes via RTSP ou webcam local, detecta automaticamente quem está
-sem capacete ou colete, e avisa o responsável com a imagem do flagrante.
+EPI (Equipamento de Proteção Individual) em ambientes de trabalho. O produto
+está iniciando pelo nicho de construção civil, mas foi desenhado para segurança
+do trabalho em geral, incluindo obras, indústrias, galpões, áreas logísticas e
+frentes operacionais. Conecta-se a câmeras existentes via RTSP ou webcam local,
+detecta automaticamente quem está sem capacete ou colete, e avisa o responsável
+com a imagem do flagrante.
+
+## Escopo de segurança do trabalho
+
+O Vigilante.AI não é um sistema exclusivo para obras. Construção civil é o
+primeiro caso de uso porque o risco operacional e a exigência de EPI são muito
+visíveis nesse contexto, mas os conceitos centrais da plataforma são de SST
+geral: monitorar conformidade, registrar evidências, apoiar ação corretiva e
+reduzir exposição a riscos.
+
+A base de conhecimento inicial contém material sobre NR-6 e NR-18. A NR-6 vale
+para EPI de forma ampla. A NR-18 deve ser usada quando a pergunta envolver
+construção civil, canteiro de obra ou frente de trabalho da construção.
 
 ## Cadastrar uma câmera
 
@@ -78,32 +93,34 @@ auditorias e prestação de contas de segurança do trabalho.
 
 ## Configurar notificações WhatsApp
 
-Em **Configurações** → card **WhatsApp Business**:
+A plataforma usa **um único número WhatsApp**, compartilhado por todas as
+organizações. As credenciais Meta (número, token, app secret, verify token e
+template) ficam no servidor (variáveis de ambiente) e são configuradas pelo
+operador da plataforma — você **não** preenche credenciais na interface.
 
-1. Informe o `phone_number_id` (numérico, 15 dígitos, vem do Meta Cloud API).
-2. Cole o `access_token` (token de sistema com permissão
-   `whatsapp_business_messaging`).
-3. Defina o `template_name` (template pré-aprovado pela Meta) e o idioma.
-4. Adicione os destinatários no formato E.164 (ex: `+5511999999999`).
-5. Marque **Ativar** e salve. Use **Testar** para enviar uma mensagem de teste.
+Em **Configurações** → card **WhatsApp Business** o admin do tenant gerencia
+apenas:
 
-O token é criptografado em repouso com Fernet — nunca fica em texto puro.
+1. **Operadores**: telefones no formato E.164 (ex: `+5511999999999`), com nome
+   opcional. Cada operador recebe os alertas confirmados e pode conversar com o
+   assistente pelo WhatsApp em nome da organização. Um número pertence a uma
+   única organização.
+2. **Anexar imagem**: incluir ou não a foto do frame do alerta na mensagem.
+3. **Ativar** as notificações e salvar. Use **Testar** para um envio de teste.
 
-## Configurar o assistente conversacional via WhatsApp (inbound)
+O card mostra **Plataforma conectada** quando o número global está configurado
+no servidor. Se aparecer aviso de credenciais ausentes, o operador da
+plataforma precisa preencher as variáveis `VIGILANTE_WHATSAPP_*` no servidor.
 
-Além de enviar alertas, o Vigilante.AI recebe perguntas via WhatsApp. No mesmo
-card preencha:
+## Assistente conversacional via WhatsApp (inbound)
 
-- `webhook_verify_token`: um token qualquer que você define, usado pela Meta
-  para validar o webhook.
-- `app_secret`: o App Secret do seu app Meta, usado para verificar a assinatura
-  HMAC de cada mensagem recebida.
-
-Depois, no Meta Developer Console, configure a Webhook URL apontando para
-`https://seu-dominio/api/webhooks/whatsapp`, com o mesmo verify token, e
-inscreva o campo `messages`. A partir daí, qualquer pessoa autorizada pode
-mandar perguntas pelo WhatsApp e o assistente responde com base na mesma base
-de conhecimento e nos mesmos dados operacionais da interface web.
+Além de enviar alertas, o Vigilante.AI recebe perguntas via WhatsApp pelo mesmo
+número único. A organização do remetente é identificada pelo **telefone do
+operador** cadastrado — por isso cada operador pertence a um só tenant. Não há
+configuração de webhook por organização: o verify token e o app secret são
+globais (servidor). Qualquer operador cadastrado pode mandar perguntas e o
+assistente responde com base na mesma base de conhecimento e nos mesmos dados
+operacionais da interface web.
 
 ## Configurar notificações Microsoft Teams
 

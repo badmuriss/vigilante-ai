@@ -1,0 +1,130 @@
+# Backend FastAPI + YOLO.
+#
+# Um PVC só, montado em /data, atende os dois caminhos de escrita:
+#   /data/alerts   → artefatos de alerta (thumb, frame, raw)
+#   /data/feedback → export de feedback para retreino
+# Dois PVCs não comprariam nada aqui, e o feedback não pode virar emptyDir
+# porque some no primeiro restart (ver docs/kubernetes-k3s.md seção 5.5:
+# extrair com `kubectl cp`, CronJob de export fica como roadmap).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vigilante-data
+  namespace: vigilante
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: vigilante
+spec:
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: vigilante
+spec:
+  # replicas: 1 é DECISÃO, não limitação envergonhada.
+  #
+  # O backend mantém um `StreamSource` por câmera na memória do processo
+  # (backend/app/registry.py + backend/app/sources.py). Duas réplicas
+  # conectariam nas mesmas câmeras: inferência duplicada, alerta duplicado
+  # e cooldown por processo, que não coordena nada.
+  #
+  # Escalar de verdade exige, ANTES: separar o processamento de câmera em
+  # Deployment próprio com sharding/eleição de líder, ou uma fila com worker
+  # consumindo trabalho em vez de descobrir câmera sozinho.
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Recreate-like de propósito: mata o velho ANTES de subir o novo.
+      # Com maxSurge:1 os dois pods coexistem por alguns segundos e ambos
+      # abrem as mesmas câmeras, o que duplica alerta no WhatsApp de operador
+      # real. Alguns segundos de indisponibilidade custam menos que alerta
+      # duplicado. Reverter para maxUnavailable:0/maxSurge:1 só quando o
+      # processamento de câmera sair para um Deployment próprio com sharding.
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          # Imagem local importada no containerd do k3s (não há registry):
+          #   docker save vigilante-backend:latest | sudo k3s ctr images import -
+          # IfNotPresent é obrigatório aqui — Always tentaria puxar de registry
+          # e o pod ficaria em ErrImagePull.
+          image: vigilante-backend:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secrets
+          ports:
+            - name: http
+              containerPort: 8000
+          # As três probes, cada uma respondendo uma pergunta diferente.
+          #
+          # startupProbe: "já subiu?" — carregar os pesos do YOLO (best.pt +
+          # yolov8n.pt) leva segundos, e o entrypoint ainda roda
+          # `alembic upgrade head` antes do uvicorn. Sem esta probe o liveness
+          # começa a contar durante o boot e mata o pod em loop infinito.
+          # 30 x 5s = até 150s de tolerância; liveness só entra depois dela.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            failureThreshold: 30
+            periodSeconds: 5
+          # liveness: "travou?" — /healthz não faz I/O. Falhou → pod morto e
+          # recriado. Nunca aponte liveness para dependência externa.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            periodSeconds: 20
+            failureThreshold: 3
+          # readiness: "dá para mandar tráfego?" — /readyz checa banco
+          # (SELECT 1) e detector carregado, e responde 503 quando não.
+          # Falhou → sai do balanceador, continua vivo.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 4Gi
+            # Sem GPU de propósito: uma câmera RTSP em CPU basta. Pedir
+            # nvidia.com/gpu exigiria driver no nó + nvidia-device-plugin e
+            # prenderia uma réplica por GPU.
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: vigilante-data

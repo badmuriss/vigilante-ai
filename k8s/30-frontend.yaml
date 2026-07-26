@@ -1,0 +1,65 @@
+# Frontend Next.js (output standalone).
+#
+# NEXT_PUBLIC_API_URL fica vazio (same-origin /api) e é baked no build, então
+# não aparece aqui: mudar exige rebuild da imagem, não restart do pod.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: vigilante
+spec:
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: vigilante
+spec:
+  # Stateless: escala de graça, ao contrário do backend. Duas réplicas para
+  # o rolling update ter para onde mandar tráfego.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: vigilante-frontend:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # DNS interno do Service. O Next reescreve /api/* para cá
+            # (frontend/next.config.mjs), então uma entrada pública serve
+            # app, API, frames e webhook do WhatsApp.
+            - name: NEXT_BACKEND_INTERNAL_URL
+              value: http://backend:8000
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi

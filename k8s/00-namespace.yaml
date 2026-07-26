@@ -1,0 +1,41 @@
+# Namespace + configuração NÃO sensível do backend.
+#
+# Segredo NÃO entra aqui. Nada de token, senha ou API key em arquivo
+# versionado — inclusive a VIGILANTE_DATABASE_URL, que carrega a senha do
+# Postgres e por isso vive no Secret `backend-secrets` (ver k8s/README.md).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vigilante
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: vigilante
+data:
+  # Storage. As duas pastas caem no mesmo PVC montado em /data (20-backend.yaml).
+  VIGILANTE_BLOB_STORAGE_PATH: /data/alerts
+  VIGILANTE_RETRAINING_EXPORT_PATH: /data/feedback
+
+  # Locale / links públicos
+  VIGILANTE_LOCAL_TIMEZONE: America/Sao_Paulo
+  VIGILANTE_PUBLIC_APP_URL: https://vigilanteai.outis.com.br
+
+  # WhatsApp Cloud API — o que não é credencial
+  VIGILANTE_WHATSAPP_API_BASE: https://graph.facebook.com/v22.0
+  VIGILANTE_WHATSAPP_HTTP_TIMEOUT: "10.0"
+  VIGILANTE_WHATSAPP_DISPATCH_WORKERS: "4"
+  VIGILANTE_WHATSAPP_TEMPLATE_LANGUAGE: pt_BR
+
+  # HUB conversacional
+  VIGILANTE_LLM_MODEL: deepseek-v4-pro
+  VIGILANTE_EMBEDDING_MODEL: text-embedding-3-small
+  VIGILANTE_KB_SEED_ON_STARTUP: "1"
+
+  # Cadastro aberto: primeiro usuário cria o tenant. Fechar depois da demo.
+  VIGILANTE_ALLOW_OPEN_REGISTRATION: "1"
+
+# VIGILANTE_CAMERA_INDEX de propósito ausente: webcam local (/dev/video0) é
+# coisa de desenvolvimento. No cluster a fonte é só RTSP, via mediamtx
+# (40-mediamtx.yaml). Ver docs/kubernetes-k3s.md seção 5.1.

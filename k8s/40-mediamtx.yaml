@@ -1,0 +1,116 @@
+# MediaMTX (servidor RTSP) DENTRO do cluster.
+#
+# Service ClusterIP, RTSP sobre TCP. O backend consome
+# `rtsp://mediamtx:8554/<stream>` por DNS interno — a câmera é cadastrada no
+# painel com essa URL (source_kind=rtsp), e RTSPSource já usa
+# rtsp_transport=tcp por padrão (backend/app/sources.py).
+#
+# Sem NodePort e sem UDP de propósito: o tráfego RTSP nunca sai do cluster,
+# então não existe motivo para abrir porta no nó. docs/kubernetes-k3s.md
+# tratava RTSP como "parte difícil" por causa do UDP; mantendo o publisher
+# dentro do cluster o problema deixa de existir em vez de ser contornado.
+#
+# Sem ConfigMap de mediamtx.yml: o default da imagem já serve RTSP em :8554
+# com publish/read anônimo, que é exatamente o que o compose configurava.
+# Um arquivo de config aqui só duplicaria mediamtx/mediamtx.yml e desviaria.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mediamtx
+  namespace: vigilante
+spec:
+  type: ClusterIP
+  selector:
+    app: mediamtx
+  ports:
+    - name: rtsp
+      port: 8554
+      targetPort: 8554
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mediamtx
+  namespace: vigilante
+spec:
+  # 1 réplica: cada publisher é dono do path que publica. Duas réplicas atrás
+  # do mesmo Service dariam stream em uma e 404 na outra, sorteado por conexão.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mediamtx
+  template:
+    metadata:
+      labels:
+        app: mediamtx
+    spec:
+      containers:
+        - name: mediamtx
+          image: bluenviron/mediamtx:latest
+          ports:
+            - name: rtsp
+              containerPort: 8554
+          readinessProbe:
+            tcpSocket:
+              port: 8554
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+
+        # Sidecar: republica os MP4 de ./media como streams RTSP, simulando
+        # câmera IP. Sidecar e não Deployment separado porque ele fala com o
+        # mediamtx via localhost e morre junto — o path RTSP não sobrevive ao
+        # servidor de qualquer forma.
+        #
+        # Em canteiro real este container não existe: a câmera IP publica
+        # direto no mediamtx e o resto do manifesto fica igual.
+        - name: ffmpeg-loop
+          image: jrottenberg/ffmpeg:7-alpine
+          command: ["/bin/sh", "/loop.sh"]
+          env:
+            - name: MEDIAMTX_HOST
+              value: "127.0.0.1" # mesmo pod, mesma network namespace
+            - name: MEDIAMTX_PORT
+              value: "8554"
+            - name: MEDIA_DIR
+              value: /media
+            - name: SEEK_SECONDS
+              value: "0"
+            # Vazio = publica todos os vídeos. Preencher com o nome (sem
+            # extensão) para publicar um só e economizar CPU na demo.
+            - name: ACTIVE_VIDEO
+              value: ""
+          volumeMounts:
+            - name: media
+              mountPath: /media
+              readOnly: true
+            - name: loop-script
+              mountPath: /loop.sh
+              subPath: ffmpeg-loop.sh
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+
+      # hostPath, não PVC nem ConfigMap: nó único, e os arquivos já estão no
+      # checkout do repo. Copiar o script para um ConfigMap criaria uma
+      # segunda cópia de scripts/ffmpeg-loop.sh, que desviaria da primeira.
+      # AJUSTE ESTES CAMINHOS para o checkout deste nó.
+      volumes:
+        - name: media
+          hostPath:
+            path: /home/badmuriss/Documents/vigilante-ai/media
+            type: Directory
+        - name: loop-script
+          hostPath:
+            path: /home/badmuriss/Documents/vigilante-ai/scripts
+            type: Directory

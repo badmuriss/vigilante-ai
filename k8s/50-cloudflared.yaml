@@ -1,0 +1,65 @@
+# Cloudflare Tunnel — SAÍDA, não entrada.
+#
+# cloudflared abre conexão de dentro para fora e a Cloudflare entrega
+# https://vigilanteai.outis.com.br nela. Por isso não tem Service, não tem
+# Ingress e não precisa de porta aberta no nó: nada chega até ele de fora.
+#
+# O Public Hostname configurado no Cloudflare Zero Trust aponta para
+# http://frontend:3000 — o DNS interno do Service resolve porque este pod
+# roda no mesmo namespace. Mesma configuração que o compose já usa, então
+# migrar para k3s não exige mexer no Zero Trust.
+#
+# Token no Secret `cloudflared-secrets` (ver k8s/README.md). Passado por env
+# TUNNEL_TOKEN, não em `args`: em args ele apareceria na linha de comando do
+# nó e em qualquer `kubectl describe pod`.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: vigilante
+spec:
+  # 1 réplica basta para a demo. Em produção, 2 réplicas dão HA de tunnel
+  # sem configuração extra (a Cloudflare balanceia entre as conexões).
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          # --metrics é obrigatório para a probe: sem ele cloudflared escolhe
+          # porta aleatória em localhost e o kubelet não alcança /ready.
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --metrics
+            - 0.0.0.0:2000
+            - run
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflared-secrets
+                  key: TUNNEL_TOKEN
+          # cloudflared expõe /ready na porta de métricas. Probe honesta: mede
+          # se o tunnel tem conexão ativa, não só se o processo está de pé.
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            periodSeconds: 20
+            failureThreshold: 3
+          ports:
+            - name: metrics
+              containerPort: 2000
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

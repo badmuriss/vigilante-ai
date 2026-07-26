@@ -1,0 +1,32 @@
+# Entrada HTTP pelo Traefik que o k3s já instala.
+#
+# Tudo aponta para o Service do frontend na 3000, inclusive /api: o Next
+# reescreve /api/* para http://backend:8000 (frontend/next.config.mjs), então
+# uma regra só serve app, API, frames da câmera e webhook do WhatsApp. Um
+# path /api separado apontando para o backend seria uma segunda fonte de
+# verdade de roteamento, com dois lugares para errar.
+#
+# Este Ingress é o caminho de acesso via nó (curl com Host, ou DNS interno).
+# O caminho público de verdade hoje é o Cloudflare Tunnel, que vai direto no
+# Service do frontend — os dois convivem e não competem.
+#
+# TLS não é declarado aqui porque a terminação é da Cloudflare. Para servir
+# HTTPS pelo próprio Traefik: cert-manager + bloco `tls:` com secretName.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vigilante
+  namespace: vigilante
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: vigilanteai.outis.com.br
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 3000

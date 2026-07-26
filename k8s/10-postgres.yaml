@@ -1,0 +1,84 @@
+# Postgres com pgvector.
+#
+# StatefulSet, não Deployment: banco tem identidade e disco. Deployment com
+# PVC funciona com 1 réplica, mas ensina o hábito errado.
+#
+# A senha vem do Secret `postgres-secrets` (ver k8s/README.md), nunca deste
+# arquivo. A mesma senha aparece na VIGILANTE_DATABASE_URL do backend, que
+# por isso também é Secret.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: vigilante
+spec:
+  clusterIP: None # headless: o StatefulSet resolve por DNS estável
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: vigilante
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          env:
+            - name: POSTGRES_USER
+              value: vigilante
+            - name: POSTGRES_DB
+              value: vigilante
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_PASSWORD
+            # Subdiretório obrigatório: o mount em /var/lib/postgresql/data
+            # traz lost+found e o initdb recusa diretório não vazio.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          # readiness, não liveness: banco pisca, e liveness aqui derruba o
+          # pod em loop. Quem não está pronto sai do balanceador e volta.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "vigilante", "-d", "vigilante"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  # k3s já traz `local-path` como StorageClass padrão: o PVC é atendido sem
+  # configurar nada. Em nó único isso é disco local, não replicação.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

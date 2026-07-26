@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import datetime
-from typing import Sequence
+from typing import Any, Callable, Sequence
 
 from app.db.base import session_scope
 from app.db.entities import Camera as CameraEntity
@@ -47,7 +47,18 @@ class StreamRegistry:
         self._sources: dict[str, StreamSource] = {}
         self._processors: dict[str, StreamProcessor] = {}
         self._alert_services: dict[str, AlertService] = {}
+        self._on_alert_created: Callable[[dict[str, Any]], None] | None = None
         self._lock = threading.Lock()
+
+    def set_alert_created_hook(
+        self, hook: Callable[[dict[str, Any]], None]
+    ) -> None:
+        """Register a callback fired when any camera persists a new alert.
+
+        Set once at startup (main.py) so new AlertServices pick it up. Used to
+        push the pending-alert review notification to WhatsApp operators.
+        """
+        self._on_alert_created = hook
 
     # --- bootstrap ---
 
@@ -69,7 +80,9 @@ class StreamRegistry:
         except Exception:
             logger.exception("Skipping camera %s: failed to build source", camera_id_str)
             return
-        alert_service = AlertService(camera_id_str, self._blob_store)
+        alert_service = AlertService(
+            camera_id_str, self._blob_store, on_created=self._on_alert_created
+        )
         processor = StreamProcessor(
             source, self._detector, alert_service, camera_id=camera_id_str
         )

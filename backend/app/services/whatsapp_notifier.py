@@ -4,24 +4,18 @@ Plugged into `POST /api/alerts/{id}/feedback` after the feedback commit:
 when a reviewer marks an alert as `correct`, `notify_async` enqueues a
 job onto a daemon thread pool that:
 
-1. Resolves the alert's tenant and loads its `WhatsAppConfig`.
-2. If `include_image=True`, uploads the alert's annotated frame to
+1. Resolves the alert's tenant and loads its `WhatsAppConfig` (master switch).
+2. Loads the tenant's enabled `WhatsAppOperator`s (the recipients).
+3. If `include_image=True`, uploads the alert's annotated frame to
    `/{phone_number_id}/media` once, reusing the returned `media_id` for
-   every recipient.
-3. For each recipient, sends a template message
+   every operator.
+4. For each operator, sends a template message
    (`POST /{phone_number_id}/messages`) with header image (optional) and
    body parameters {camera, EPI list, timestamp}.
 
-Design notes:
-- Worker thread isolation: the FastAPI request thread is never blocked
-  by Meta's HTTP latency; failures stay confined to the worker and only
-  surface in logs + Prometheus counter `vigilante_whatsapp_messages_total`.
-- Template-only: Meta requires a pre-approved template for
-  business-initiated messages outside the 24-hour customer window.
-  Template name + language are tenant-configurable.
-- Pure stdlib snapshot: the alert is read on the request thread (where
-  the SQLA session is alive) and passed to the worker as a plain
-  `_AlertSnapshot` so the worker never touches detached ORM state.
+The Meta credentials (number, token, template) are GLOBAL — one shared
+platform number configured via env/settings (`WHATSAPP_*`). They are read at
+call time; rotation = update env and restart.
 """
 
 from __future__ import annotations
@@ -32,19 +26,15 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Sequence
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from sqlalchemy import select
 
 from app.config import settings
 from app.db.base import session_scope
-from app.db.entities import Alert, Camera, Site, WhatsAppConfig
+from app.db.entities import Alert, Camera, Site, WhatsAppConfig, WhatsAppOperator
 from app.observability import whatsapp_messages_total
-from app.services.crypto import (
-    SecretDecryptError,
-    decrypt_secret,
-    encryption_available,
-)
 from app.storage import BlobStore
 
 logger = logging.getLogger(__name__)
@@ -101,12 +91,38 @@ def _format_epis(missing: Sequence[str]) -> str:
 
 def _format_timestamp(ts: datetime) -> str:
     # WhatsApp template parameters cannot contain newlines or 4+ spaces.
-    return ts.strftime("%d/%m/%Y %H:%M")
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    try:
+        local_tz = ZoneInfo(settings.LOCAL_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        local_tz = ZoneInfo("America/Sao_Paulo")
+    return ts.astimezone(local_tz).strftime("%d/%m/%Y %H:%M")
 
 
 def _to_meta_recipient(value: str) -> str:
     """Convert stored E.164 values to Meta's numeric recipient format."""
     return value[1:] if value.startswith("+") else value
+
+
+def to_e164(msisdn: str) -> str:
+    """Normalize an inbound Meta sender id (bare digits) to stored E.164."""
+    msisdn = msisdn.strip()
+    return msisdn if msisdn.startswith("+") else "+" + msisdn
+
+
+# --- Global platform credentials (env/settings) -----------------------------
+
+
+def _global_unready_reason() -> str | None:
+    """Return a human reason if the global Meta credentials are incomplete."""
+    if not settings.WHATSAPP_PHONE_NUMBER_ID:
+        return "WHATSAPP_PHONE_NUMBER_ID not set"
+    if not settings.WHATSAPP_ACCESS_TOKEN:
+        return "WHATSAPP_ACCESS_TOKEN not set"
+    if not settings.WHATSAPP_TEMPLATE_NAME:
+        return "WHATSAPP_TEMPLATE_NAME not set"
+    return None
 
 
 class WhatsAppNotifier:
@@ -159,41 +175,66 @@ class WhatsAppNotifier:
             except RuntimeError:
                 logger.warning("Executor refused job for alert %s", snap.id)
 
+    def notify_review_async(self, alert: dict[str, Any]) -> None:
+        """Push a pending alert to operators for review (with decision buttons).
+
+        Called when an alert is created (still pending). `alert` is the plain
+        dict returned by AlertService.add_alert plus `camera_id`. The send
+        carries quick-reply buttons whose payload encodes the alert id so the
+        inbound webhook can apply the operator's decision.
+        """
+        try:
+            snap = _AlertSnapshot(
+                id=str(alert["id"]),
+                camera_id=str(alert["camera_id"]),
+                violation_type=str(alert.get("violation_type", "")),
+                missing_epis=list(alert.get("missing_epis") or []),
+                timestamp=datetime.now(timezone.utc),
+                frame_path=alert.get("frame_path"),
+            )
+        except Exception:
+            logger.exception("Failed to build snapshot for WhatsApp review push")
+            return
+        with self._lock:
+            if self._closed:
+                return
+            try:
+                self._executor.submit(self._send_job, snap, True)
+            except RuntimeError:
+                logger.warning("Executor refused review job for alert %s", snap.id)
+
     def send_test(
         self,
         *,
         tenant_id: str,
         phone_number: str,
     ) -> dict[str, Any]:
-        """Synchronously send a no-image test message to one recipient.
+        """Synchronously send a template test message to one recipient.
 
         Returns a dict with `ok` and either `message_id` or `error`. Used
         by the configuration UI to validate setup. Runs on the request
         thread by design — the operator wants the error inline.
         """
-        config = self._load_config(tenant_id)
-        if config is None:
-            return {"ok": False, "error": "WhatsApp config not found for this tenant"}
-        validation = self._validate_config(config, require_recipients=False)
-        if validation is not None:
-            return {"ok": False, "error": validation}
-        try:
-            token = decrypt_secret(config.access_token_encrypted or "")
-        except SecretDecryptError as exc:
-            return {"ok": False, "error": str(exc)}
+        reason = _global_unready_reason()
+        if reason is not None:
+            return {"ok": False, "error": reason}
+        image_url = settings.WHATSAPP_TEST_IMAGE_URL.strip()
+        if not image_url and settings.PUBLIC_APP_URL.strip():
+            image_url = settings.PUBLIC_APP_URL.strip().rstrip("/") + "/whatsapp-test.jpg"
         try:
             result = self._send_text(
-                phone_number_id=config.phone_number_id or "",
-                token=token,
+                phone_number_id=settings.WHATSAPP_PHONE_NUMBER_ID,
+                token=settings.WHATSAPP_ACCESS_TOKEN,
                 to=phone_number,
-                template_name=config.template_name or "",
-                language=config.template_language or "pt_BR",
+                template_name=settings.WHATSAPP_TEMPLATE_NAME,
+                language=settings.WHATSAPP_TEMPLATE_LANGUAGE or "pt_BR",
                 body_params=[
                     "Teste de configuração",
                     "Vigilante.AI",
                     _format_timestamp(datetime.now(timezone.utc)),
                 ],
                 media_id=None,
+                media_link=image_url or None,
             )
         except httpx.HTTPError as exc:
             return {"ok": False, "error": f"Network error: {exc}"}
@@ -208,13 +249,13 @@ class WhatsAppNotifier:
 
     # --- worker ---
 
-    def _send_job(self, snap: _AlertSnapshot) -> None:
+    def _send_job(self, snap: _AlertSnapshot, with_buttons: bool = False) -> None:
         try:
-            self._dispatch(snap)
+            self._dispatch(snap, with_buttons=with_buttons)
         except Exception:
             logger.exception("WhatsApp dispatch crashed for alert %s", snap.id)
 
-    def _dispatch(self, snap: _AlertSnapshot) -> None:
+    def _dispatch(self, snap: _AlertSnapshot, *, with_buttons: bool = False) -> None:
         ctx = self._load_tenant_context(snap.camera_id)
         if ctx is None:
             logger.warning("No tenant context for camera %s", snap.camera_id)
@@ -225,34 +266,27 @@ class WhatsAppNotifier:
                 tenant_id=ctx.tenant_id, outcome="skipped"
             ).inc()
             return
-        validation = self._validate_config(config)
-        if validation is not None:
-            logger.info(
-                "WhatsApp config invalid for tenant %s: %s", ctx.tenant_id, validation
-            )
+        reason = _global_unready_reason()
+        if reason is not None:
+            logger.info("WhatsApp platform credentials incomplete: %s", reason)
+            whatsapp_messages_total.labels(
+                tenant_id=ctx.tenant_id, outcome="failed"
+            ).inc()
+            return
+        operators = self._load_operator_phones(ctx.tenant_id)
+        if not operators:
             whatsapp_messages_total.labels(
                 tenant_id=ctx.tenant_id, outcome="skipped"
             ).inc()
             return
-        if not encryption_available():
-            logger.error("Cannot decrypt WhatsApp token: encryption key not configured")
-            whatsapp_messages_total.labels(
-                tenant_id=ctx.tenant_id, outcome="failed"
-            ).inc()
-            return
-        try:
-            token = decrypt_secret(config.access_token_encrypted or "")
-        except SecretDecryptError:
-            logger.exception("Failed to decrypt WhatsApp token for tenant %s", ctx.tenant_id)
-            whatsapp_messages_total.labels(
-                tenant_id=ctx.tenant_id, outcome="failed"
-            ).inc()
-            return
+
+        token = settings.WHATSAPP_ACCESS_TOKEN
+        phone_number_id = settings.WHATSAPP_PHONE_NUMBER_ID
 
         media_id: str | None = None
         if config.include_image and snap.frame_path:
             media_id = self._upload_media(
-                phone_number_id=config.phone_number_id or "",
+                phone_number_id=phone_number_id,
                 token=token,
                 frame_path=snap.frame_path,
                 alert_id=snap.id,
@@ -263,15 +297,24 @@ class WhatsAppNotifier:
             _format_epis(snap.missing_epis),
             _format_timestamp(snap.timestamp),
         ]
-        for recipient in config.recipients or []:
+        # Review buttons carry the alert id back so the inbound webhook can apply
+        # the operator's decision. Index must match the template button order:
+        # 0 = confirm (Confirmar Infração), 1 = false positive.
+        buttons = (
+            [(0, f"confirm:{snap.id}"), (1, f"false_positive:{snap.id}")]
+            if with_buttons
+            else None
+        )
+        for recipient in operators:
             result = self._send_text(
-                phone_number_id=config.phone_number_id or "",
+                phone_number_id=phone_number_id,
                 token=token,
                 to=recipient,
-                template_name=config.template_name or "",
-                language=config.template_language or "pt_BR",
+                template_name=settings.WHATSAPP_TEMPLATE_NAME,
+                language=settings.WHATSAPP_TEMPLATE_LANGUAGE or "pt_BR",
                 body_params=body_params,
                 media_id=media_id,
+                buttons=buttons,
             )
             outcome = "sent" if result.get("ok") else "failed"
             whatsapp_messages_total.labels(
@@ -333,6 +376,8 @@ class WhatsAppNotifier:
         language: str,
         body_params: Sequence[str],
         media_id: str | None,
+        media_link: str | None = None,
+        buttons: Sequence[tuple[int, str]] | None = None,
     ) -> dict[str, Any]:
         components: list[dict[str, Any]] = []
         if media_id:
@@ -344,6 +389,15 @@ class WhatsAppNotifier:
                     ],
                 }
             )
+        elif media_link:
+            components.append(
+                {
+                    "type": "header",
+                    "parameters": [
+                        {"type": "image", "image": {"link": media_link}},
+                    ],
+                }
+            )
         components.append(
             {
                 "type": "body",
@@ -352,6 +406,15 @@ class WhatsAppNotifier:
                 ],
             }
         )
+        for index, payload in buttons or []:
+            components.append(
+                {
+                    "type": "button",
+                    "sub_type": "quick_reply",
+                    "index": str(index),
+                    "parameters": [{"type": "payload", "payload": payload}],
+                }
+            )
         payload: dict[str, Any] = {
             "messaging_product": "whatsapp",
             "to": _to_meta_recipient(to),
@@ -417,52 +480,31 @@ class WhatsAppNotifier:
             return cfg
 
     @staticmethod
-    def _validate_config(
-        config: WhatsAppConfig, *, require_recipients: bool = True
-    ) -> str | None:
-        """Return a human-readable reason if the config is not sendable."""
-        if not config.phone_number_id:
-            return "phone_number_id is empty"
-        if not config.access_token_encrypted:
-            return "access token not set"
-        if not config.template_name:
-            return "template_name is empty"
-        if require_recipients and not config.recipients:
-            return "no recipients configured"
-        return None
+    def _load_operator_phones(tenant_id: str) -> list[str]:
+        with session_scope() as session:
+            return list(
+                session.scalars(
+                    select(WhatsAppOperator.phone).where(
+                        WhatsAppOperator.tenant_id == tenant_id,
+                        WhatsAppOperator.enabled.is_(True),
+                    )
+                ).all()
+            )
 
 
 # --- Inbound conversational replies (free-form, used by the chat webhook) ---
 #
 # Within the 24h customer-service window (opened when the user messages us),
 # Meta allows free-form `type: "text"` replies — no pre-approved template
-# needed. The chat webhook uses these to answer inbound questions.
+# needed. The chat webhook uses these to answer inbound questions. All calls
+# use the single shared platform number from settings.
 
 
-def _load_config_by_id(config_id: str) -> WhatsAppConfig | None:
-    with session_scope() as session:
-        cfg = session.scalar(
-            select(WhatsAppConfig).where(WhatsAppConfig.id == config_id)
-        )
-        if cfg is not None:
-            session.expunge(cfg)
-        return cfg
-
-
-def send_session_text(config_id: str, *, to: str, body: str) -> dict[str, Any]:
+def send_session_text(*, to: str, body: str) -> dict[str, Any]:
     """Send a free-form WhatsApp text reply. Returns {ok, message_id|error}."""
-    cfg = _load_config_by_id(config_id)
-    if cfg is None:
-        return {"ok": False, "error": "config not found"}
-    if not cfg.phone_number_id or not cfg.access_token_encrypted:
-        return {"ok": False, "error": "incomplete WhatsApp config"}
-    if not encryption_available():
-        return {"ok": False, "error": "encryption key not configured"}
-    try:
-        token = decrypt_secret(cfg.access_token_encrypted)
-    except SecretDecryptError as exc:
-        return {"ok": False, "error": str(exc)}
-
+    reason = _global_unready_reason()
+    if reason is not None:
+        return {"ok": False, "error": reason}
     payload = {
         "messaging_product": "whatsapp",
         "to": _to_meta_recipient(to),
@@ -474,9 +516,9 @@ def send_session_text(config_id: str, *, to: str, body: str) -> dict[str, Any]:
             timeout=settings.WHATSAPP_HTTP_TIMEOUT, base_url=settings.WHATSAPP_API_BASE
         ) as client:
             resp = client.post(
-                f"/{cfg.phone_number_id}/messages",
+                f"/{settings.WHATSAPP_PHONE_NUMBER_ID}/messages",
                 headers={
-                    "Authorization": f"Bearer {token}",
+                    "Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -494,16 +536,11 @@ def send_session_text(config_id: str, *, to: str, body: str) -> dict[str, Any]:
     return {"ok": True, "message_id": messages[0].get("id")}
 
 
-def download_media(media_id: str, config_id: str) -> bytes | None:
+def download_media(media_id: str) -> bytes | None:
     """Download inbound media bytes (e.g. a voice note) by Meta media id."""
-    cfg = _load_config_by_id(config_id)
-    if cfg is None or not cfg.access_token_encrypted or not encryption_available():
+    if not settings.WHATSAPP_ACCESS_TOKEN:
         return None
-    try:
-        token = decrypt_secret(cfg.access_token_encrypted)
-    except SecretDecryptError:
-        return None
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {settings.WHATSAPP_ACCESS_TOKEN}"}
     try:
         with httpx.Client(
             timeout=settings.WHATSAPP_HTTP_TIMEOUT, base_url=settings.WHATSAPP_API_BASE

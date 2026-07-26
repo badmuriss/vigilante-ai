@@ -72,6 +72,9 @@ class Tenant(Base):
     whatsapp_config: Mapped["WhatsAppConfig | None"] = relationship(
         back_populates="tenant", cascade="all, delete-orphan", uselist=False
     )
+    whatsapp_operators: Mapped[list["WhatsAppOperator"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
     teams_config: Mapped["TeamsConfig | None"] = relationship(
         back_populates="tenant", cascade="all, delete-orphan", uselist=False
     )
@@ -195,13 +198,12 @@ class Session(Base):
 
 
 class WhatsAppConfig(Base):
-    """Per-tenant WhatsApp Cloud API configuration.
+    """Per-tenant WhatsApp preferences.
 
-    One row per tenant (`tenant_id` is UNIQUE). `access_token_encrypted`
-    holds a Fernet-encrypted Meta access token — never stored in plain
-    text. `recipients` is a JSON list of E.164 phone numbers (e.g.
-    "+5511999999999"). Notifications fire only when `enabled=True` AND
-    `recipients` is non-empty AND the row has a token + phone_number_id.
+    The Meta credentials (number, token, app secret, verify token, template)
+    are now GLOBAL — one shared platform number, configured via env/settings
+    (`WHATSAPP_*`). This row only holds the tenant's master switch and whether
+    alert frames are attached. Recipients moved to `whatsapp_operators`.
     """
 
     __tablename__ = "whatsapp_configs"
@@ -214,24 +216,7 @@ class WhatsAppConfig(Base):
         unique=True,
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    phone_number_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    template_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    template_language: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="pt_BR"
-    )
-    recipients: Mapped[list[str]] = mapped_column(
-        JSON_TYPE, nullable=False, default=list
-    )
     include_image: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # Conversational HUB (inbound webhook). Both encrypted with Fernet so the
-    # row never holds plain-text Meta secrets. `phone_number_id` already exists
-    # above; we add a unique index in migration 0004 so the webhook handler
-    # can resolve tenant from the Meta payload.
-    webhook_verify_token_encrypted: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )
-    app_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -243,6 +228,40 @@ class WhatsAppConfig(Base):
     )
 
     tenant: Mapped[Tenant] = relationship(back_populates="whatsapp_config")
+
+
+class WhatsAppOperator(Base):
+    """A person (phone number) that acts on behalf of one tenant over WhatsApp.
+
+    Operators receive confirmed-alert notifications AND can chat with the
+    assistant inbound — both through the single shared platform number. `phone`
+    is UNIQUE across all tenants: an operator belongs to exactly one tenant,
+    which is how the inbound webhook resolves the tenant from `msg.from`.
+    """
+
+    __tablename__ = "whatsapp_operators"
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    phone: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
+    name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    tenant: Mapped[Tenant] = relationship(back_populates="whatsapp_operators")
+
+
+Index("ix_whatsapp_operators_tenant", WhatsAppOperator.tenant_id)
 
 
 class Conversation(Base):

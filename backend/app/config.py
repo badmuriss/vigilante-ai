@@ -64,16 +64,27 @@ class Settings(BaseSettings):
     RETRAINING_EXPORT_PATH: str = "../ml/data/feedback"
 
     # Notifications — WhatsApp Cloud API
-    # Fernet key (base64, 32 bytes) used to encrypt per-tenant Meta access
-    # tokens at rest. Generate with:
+    # Fernet key (base64, 32 bytes). Still used to encrypt the Teams webhook
+    # URL at rest. Generate with:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-    # Empty disables encryption-at-rest (notifier will refuse to run).
     NOTIFY_ENCRYPTION_KEY: str = ""
     # Pin this per deployment and update intentionally when moving Graph API
     # versions in Meta Developer settings.
     WHATSAPP_API_BASE: str = "https://graph.facebook.com/v22.0"
     WHATSAPP_HTTP_TIMEOUT: float = 10.0
     WHATSAPP_DISPATCH_WORKERS: int = 4
+    # The platform owns ONE shared Meta WhatsApp number. These credentials are
+    # global (not per-tenant) and read at startup. Rotation = update the value
+    # here / in .env and restart the backend. Tenants never see them; they only
+    # register operators (phone numbers) that map back to their tenant.
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_APP_SECRET: str = ""
+    WHATSAPP_VERIFY_TOKEN: str = ""
+    WHATSAPP_TEMPLATE_NAME: str = ""
+    WHATSAPP_TEMPLATE_LANGUAGE: str = "pt_BR"
+    WHATSAPP_TEST_IMAGE_URL: str = ""
+    LOCAL_TIMEZONE: str = "America/Sao_Paulo"
     # Notifications — Microsoft Teams Workflows webhook
     TEAMS_HTTP_TIMEOUT: float = 10.0
     TEAMS_DISPATCH_WORKERS: int = 4

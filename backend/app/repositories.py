@@ -8,7 +8,15 @@ from typing import Sequence
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from app.db.entities import Alert, Camera, Site, TeamsConfig, Tenant, WhatsAppConfig
+from app.db.entities import (
+    Alert,
+    Camera,
+    Site,
+    TeamsConfig,
+    Tenant,
+    WhatsAppConfig,
+    WhatsAppOperator,
+)
 
 
 class TenantRepository:
@@ -267,54 +275,91 @@ class WhatsAppConfigRepository:
         tenant_id: str,
         *,
         enabled: bool,
-        phone_number_id: str | None,
-        access_token_encrypted: str | None,
-        template_name: str | None,
-        template_language: str,
-        recipients: list[str],
         include_image: bool,
-        webhook_verify_token_encrypted: str | None = None,
-        app_secret_encrypted: str | None = None,
     ) -> WhatsAppConfig:
         existing = self.get_for_tenant(tenant_id)
         if existing is None:
             cfg = WhatsAppConfig(
                 tenant_id=tenant_id,
                 enabled=enabled,
-                phone_number_id=phone_number_id,
-                access_token_encrypted=access_token_encrypted,
-                template_name=template_name,
-                template_language=template_language,
-                recipients=recipients,
                 include_image=include_image,
-                webhook_verify_token_encrypted=(
-                    webhook_verify_token_encrypted or None
-                ),
-                app_secret_encrypted=app_secret_encrypted or None,
             )
             self._session.add(cfg)
             self._session.flush()
             return cfg
 
         existing.enabled = enabled
-        existing.phone_number_id = phone_number_id
-        # `access_token_encrypted` is only overwritten when the caller passes
-        # a fresh ciphertext; passing None leaves the previous token in place.
-        if access_token_encrypted is not None:
-            existing.access_token_encrypted = access_token_encrypted
-        existing.template_name = template_name
-        existing.template_language = template_language
-        existing.recipients = recipients
         existing.include_image = include_image
-        # Same None/""/value semantics for the webhook secrets.
-        if webhook_verify_token_encrypted is not None:
-            existing.webhook_verify_token_encrypted = (
-                webhook_verify_token_encrypted or None
-            )
-        if app_secret_encrypted is not None:
-            existing.app_secret_encrypted = app_secret_encrypted or None
         self._session.flush()
         return existing
+
+
+class WhatsAppOperatorRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_for_tenant(self, tenant_id: str) -> list[WhatsAppOperator]:
+        return list(
+            self._session.scalars(
+                select(WhatsAppOperator)
+                .where(WhatsAppOperator.tenant_id == tenant_id)
+                .order_by(WhatsAppOperator.created_at.asc())
+            ).all()
+        )
+
+    def add(
+        self, tenant_id: str, *, phone: str, name: str | None
+    ) -> WhatsAppOperator:
+        """Insert an operator. Caller commits; an IntegrityError on the unique
+        `phone` means the number already belongs to another tenant."""
+        op = WhatsAppOperator(tenant_id=tenant_id, phone=phone, name=name)
+        self._session.add(op)
+        self._session.flush()
+        return op
+
+    def get(self, tenant_id: str, operator_id: str) -> WhatsAppOperator | None:
+        return self._session.scalar(
+            select(WhatsAppOperator).where(
+                WhatsAppOperator.id == operator_id,
+                WhatsAppOperator.tenant_id == tenant_id,
+            )
+        )
+
+    def remove(self, tenant_id: str, operator_id: str) -> bool:
+        op = self.get(tenant_id, operator_id)
+        if op is None:
+            return False
+        self._session.delete(op)
+        self._session.flush()
+        return True
+
+    def update(
+        self,
+        tenant_id: str,
+        operator_id: str,
+        *,
+        enabled: bool | None = None,
+        name: str | None = None,
+    ) -> WhatsAppOperator | None:
+        op = self.get(tenant_id, operator_id)
+        if op is None:
+            return None
+        if enabled is not None:
+            op.enabled = enabled
+        if name is not None:
+            op.name = name or None
+        self._session.flush()
+        return op
+
+    def find_tenant_id_by_phone(self, phone: str) -> str | None:
+        """Resolve the tenant an inbound message belongs to. Only enabled
+        operators may interact — a disabled number is ignored."""
+        return self._session.scalar(
+            select(WhatsAppOperator.tenant_id).where(
+                WhatsAppOperator.phone == phone,
+                WhatsAppOperator.enabled.is_(True),
+            )
+        )
 
 
 class TeamsConfigRepository:

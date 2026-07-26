@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import CurrentUser, get_current_user, require_role
 from app.auth.router import router as auth_router
 from app.config import settings
-from app.db.base import dispose_engine, get_session
+from app.db.base import dispose_engine, get_session, session_scope
 from app.db.entities import Camera as CameraEntity
 from app.detector import EPI_CLASSES, EPI_LABELS_PT, SafetyDetector
 from app.chat.router import router as chat_router
@@ -64,6 +64,11 @@ registry = StreamRegistry(detector, blob_store)
 retraining_exporter = RetrainingExporter(blob_store)
 whatsapp_notifier = WhatsAppNotifier(blob_store)
 teams_notifier = TeamsNotifier()
+
+# Push every new (pending) alert to WhatsApp operators with review buttons so
+# they can confirm/dismiss from the phone. The notifier no-ops when the tenant
+# has WhatsApp disabled / no operators / creds missing.
+registry.set_alert_created_hook(whatsapp_notifier.notify_review_async)
 
 
 @asynccontextmanager
@@ -123,16 +128,35 @@ async def lifespan(app: FastAPI):
                 id {uuid_type} PRIMARY KEY,
                 tenant_id {uuid_type} NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
                 enabled BOOLEAN NOT NULL DEFAULT {bool_default_false},
-                phone_number_id VARCHAR(64),
-                access_token_encrypted TEXT,
-                template_name VARCHAR(128),
-                template_language VARCHAR(16) NOT NULL DEFAULT 'pt_BR',
-                recipients {json_type} NOT NULL DEFAULT '[]',
                 include_image BOOLEAN NOT NULL DEFAULT {bool_default_true},
                 created_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
+            )
+        )
+        # WhatsApp operators: phone numbers that act on behalf of one tenant.
+        # `phone` is UNIQUE globally — an operator belongs to a single tenant,
+        # which is how the inbound webhook resolves the tenant from `msg.from`.
+        conn.execute(
+            _sql_text(
+                f"""
+            CREATE TABLE IF NOT EXISTS whatsapp_operators (
+                id {uuid_type} PRIMARY KEY,
+                tenant_id {uuid_type} NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                phone VARCHAR(20) NOT NULL UNIQUE,
+                name VARCHAR(120),
+                enabled BOOLEAN NOT NULL DEFAULT {bool_default_true},
+                created_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at {dt_type} NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+            )
+        )
+        conn.execute(
+            _sql_text(
+                "CREATE INDEX IF NOT EXISTS ix_whatsapp_operators_tenant "
+                "ON whatsapp_operators (tenant_id)"
             )
         )
         conn.execute(
@@ -189,6 +213,42 @@ app.include_router(notifications_router)
 app.include_router(chat_router)
 app.include_router(kb_router)
 app.include_router(wa_webhook_router)
+
+
+# --- Health probes (Kubernetes liveness/readiness) ---
+# Outside /api and unauthenticated on purpose: kubelet calls these directly,
+# no JWT in the request. /api/status is NOT a probe — it calls
+# _ensure_legacy_camera() (DB write + side effect), see docs/kubernetes-k3s.md.
+
+
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    """Liveness: is the process alive? Zero I/O — never depends on the DB or
+    a probe pointed here would restart the pod every time the DB blips."""
+    return {"status": "ok"}
+
+
+def _ping_db() -> bool:
+    from sqlalchemy import text as _sql_text
+
+    try:
+        # ponytail: relies on pool_pre_ping + the driver's connect timeout for
+        # "curto"; add an explicit statement_timeout if this ever hangs in prod.
+        with session_scope() as session:
+            session.execute(_sql_text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
+@app.get("/readyz")
+def readyz(response: Response) -> dict[str, object]:
+    """Readiness: can this pod take traffic? Checks DB + YOLO model load."""
+    db_ok = _ping_db()
+    ready = db_ok and detector.is_loaded
+    if not ready:
+        response.status_code = 503
+    return {"ready": ready, "db": db_ok, "model": detector.is_loaded}
 
 
 def _seed_knowledge_base() -> None:
@@ -580,17 +640,11 @@ def post_alert_feedback(
         logging.getLogger(__name__).exception(
             "Retraining export failed for alert %s", alert_id
         )
-    # Confirmed-alert WhatsApp notification — dispatched to a daemon
-    # thread pool so the operator's feedback round-trip never blocks on
-    # Meta's API.
+    # Confirmed-alert Teams notification. WhatsApp is NOT sent here: the alert
+    # is pushed to WhatsApp operators at creation (pending) with review buttons,
+    # and confirming via that button replies inline — re-sending here would
+    # double-notify.
     if a.feedback == "correct":
-        try:
-            whatsapp_notifier.notify_async(a)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                "WhatsApp notify dispatch failed for alert %s", alert_id
-            )
         try:
             teams_notifier.notify_async(a)
         except Exception:

@@ -55,11 +55,13 @@ class AlertManager:
         missing_epis: list[str] | None = None,
         raw_frame: NDArray[np.uint8] | None = None,
         detected_bboxes: list[dict[str, Any]] | None = None,
+        face_bboxes: list[tuple[int, int, int, int]] | None = None,
     ) -> Alert | None:
-        # raw_frame + detected_bboxes accepted for protocol parity with
-        # AlertService but ignored here — the legacy in-memory manager
-        # has no need for retraining payloads.
-        del raw_frame, detected_bboxes
+        # raw_frame + detected_bboxes + face_bboxes accepted for protocol
+        # parity with AlertService but ignored here — the legacy in-memory
+        # manager has no persisted artefacts to anonymise and no need for
+        # retraining payloads.
+        del raw_frame, detected_bboxes, face_bboxes
         if self._is_on_cooldown(violation_type):
             return None
 

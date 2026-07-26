@@ -544,6 +544,7 @@ class StreamProcessor:
                     missing_epis=missing_labels,
                     raw_frame=frame,
                     detected_bboxes=bbox_records,
+                    face_bboxes=[d.bbox for d in visible_faces],
                 )
                 self._last_alert_at = now
             self._last_missing_set = frozenset(scene_missing)

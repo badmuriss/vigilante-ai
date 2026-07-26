@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 import cv2
@@ -29,9 +29,18 @@ logger = logging.getLogger(__name__)
 class AlertService:
     """Replacement for AlertManager — persists to Postgres + filesystem."""
 
-    def __init__(self, camera_id: str, blob_store: BlobStore) -> None:
+    def __init__(
+        self,
+        camera_id: str,
+        blob_store: BlobStore,
+        on_created: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self._camera_id = camera_id
         self._blob_store = blob_store
+        # Fired after a new (pending) alert is persisted. Used to push the
+        # review notification to WhatsApp operators. Never allowed to break
+        # the stream loop.
+        self._on_created = on_created
         self._cooldowns: dict[str, datetime] = {}
         self._lock = threading.Lock()
         self._session_start: datetime = datetime.utcnow()
@@ -48,6 +57,7 @@ class AlertService:
         missing_epis: list[str] | None = None,
         raw_frame: NDArray[np.uint8] | None = None,
         detected_bboxes: list[dict[str, Any]] | None = None,
+        face_bboxes: list[tuple[int, int, int, int]] | None = None,
     ) -> dict[str, Any] | None:
         if self._is_on_cooldown(violation_type):
             return None
@@ -72,10 +82,18 @@ class AlertService:
 
         alert_id = str(uuid4())
         quality = settings.ALERT_JPEG_QUALITY
-        thumb_jpeg = _encode_jpeg(frame, width=160, quality=quality)
+        # Anonymise the human-facing artefacts (thumbnail + annotated frame).
+        # Every alert passes through here, so panel and WhatsApp are covered at
+        # once and no future caller can leak an unblurred face by omission.
+        review_frame = _blur_faces(frame, face_bboxes)
+        thumb_jpeg = _encode_jpeg(review_frame, width=160, quality=quality)
         # Annotated frame at native resolution for high-quality admin review.
-        full_jpeg = _encode_jpeg(frame, width=None, quality=quality)
+        full_jpeg = _encode_jpeg(review_frame, width=None, quality=quality)
         # Raw (un-annotated) frame at native resolution for retraining export.
+        # Deliberately NOT blurred: the hardhat sits on the head, adjacent to
+        # the face region, so blurring there destroys exactly the signal YOLO
+        # must learn for hardhat/no_hardhat. Privacy on the raw artefact is
+        # handled by access control + short retention, not by pixels.
         raw_jpeg = (
             _encode_jpeg(raw_frame, width=None, quality=quality)
             if raw_frame is not None
@@ -141,14 +159,23 @@ class AlertService:
         alerts_total.labels(
             camera_id=self._camera_id, violation_type=violation_type
         ).inc()
-        return {
+        result = {
             "id": alert_id,
+            "camera_id": self._camera_id,
             "violation_type": violation_type,
             "confidence": confidence,
             "missing_epis": missing_epis or [],
             "frame_path": frame_path,
             "thumbnail_path": thumb_path,
         }
+        if self._on_created is not None:
+            try:
+                self._on_created(result)
+            except Exception:
+                logger.exception(
+                    "on_created hook failed for alert %s", alert_id
+                )
+        return result
 
     # --- in-memory frame counters (per-session compliance) ---
 
@@ -187,6 +214,35 @@ class AlertService:
         if last is None:
             return False
         return datetime.utcnow() - last < timedelta(seconds=settings.ALERT_COOLDOWN_SECONDS)
+
+
+def _blur_faces(
+    frame: NDArray[np.uint8], boxes: list[tuple[int, int, int, int]] | None
+) -> NDArray[np.uint8]:
+    """Return a **copy** of `frame` with every face box Gaussian-blurred.
+
+    The kernel scales with the box so a distant (small) face is hidden as
+    thoroughly as a close one. Boxes are clipped to the frame, and degenerate
+    boxes (zero/negative width or height after clipping) are skipped instead
+    of raising.
+    """
+    out: NDArray[np.uint8] = frame.copy()
+    if not boxes:
+        return out
+    height, width = out.shape[:2]
+    for x1, y1, x2, y2 in boxes:
+        left = max(0, min(int(x1), width))
+        top = max(0, min(int(y1), height))
+        right = max(0, min(int(x2), width))
+        bottom = max(0, min(int(y2), height))
+        if right <= left or bottom <= top:
+            continue
+        region = out[top:bottom, left:right]
+        # Kernel ~1/3 of the smaller side, forced odd and >= 3 (cv2 requires
+        # positive odd ksize).
+        ksize = max(3, (min(right - left, bottom - top) // 3) | 1)
+        out[top:bottom, left:right] = cv2.GaussianBlur(region, (ksize, ksize), 0)
+    return out
 
 
 def _encode_jpeg(

@@ -1,6 +1,10 @@
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
-opencv-python-headless>=4.9.0
+opencv-python-headless>=4.9.0,<5
+# ultralytics puxa opencv-python (nao-headless) sem teto. OpenCV 5 tirou
+# cv2.CascadeClassifier do modulo principal e o detector de face quebra no
+# import. Teto explicito na transitiva ate o codigo migrar para a API nova.
+opencv-python>=4.9.0,<5
 ultralytics>=8.1.0
 python-multipart>=0.0.6
 pydantic-settings>=2.1.0

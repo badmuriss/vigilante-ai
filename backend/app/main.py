@@ -719,24 +719,37 @@ def get_camera_stats(
 # --- Legacy alerts/stats endpoints (proxy to default camera) ---
 
 
+# Estes proxies chamam as rotas por câmera como função Python comum, e o
+# FastAPI só resolve `Depends` quando é ELE quem invoca a rota. Sem receber e
+# repassar `user`, o parâmetro chega como o objeto `Depends` e estoura em
+# `_ensure_owns_camera` com AttributeError, virando 500.
+
+
 @app.get("/api/alerts", response_model=AlertListResponse)
-def get_alerts(session: Session = Depends(get_session)) -> AlertListResponse:
+def get_alerts(
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+) -> AlertListResponse:
     cam = _ensure_legacy_camera()
-    return list_camera_alerts(cam.id, session=session)
+    return list_camera_alerts(cam.id, session=session, user=user)
 
 
 @app.delete("/api/alerts", response_model=ClearAlertsResponse)
-def clear_alerts(session: Session = Depends(get_session)) -> ClearAlertsResponse:
+def clear_alerts(
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
+) -> ClearAlertsResponse:
     cam = _ensure_legacy_camera()
-    return clear_camera_alerts(cam.id, session=session)
+    return clear_camera_alerts(cam.id, session=session, user=user)
 
 
 @app.get("/api/stats", response_model=StatsResponse)
 def get_stats_endpoint(
     session: Session = Depends(get_session),
+    user: CurrentUser = Depends(get_current_user),
 ) -> StatsResponse:
     cam = _ensure_legacy_camera()
-    return get_camera_stats(cam.id, session=session)
+    return get_camera_stats(cam.id, session=session, user=user)
 
 
 # --- EPI config (per camera + legacy default) ---

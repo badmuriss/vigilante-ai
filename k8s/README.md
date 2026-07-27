@@ -251,3 +251,95 @@ kubectl -n vigilante delete pvc --all  # apaga o banco e os alertas de vez
 ```
 
 `kubectl delete namespace vigilante` leva tudo junto, PVC incluído.
+
+---
+
+# Dia a dia (depois de instalado)
+
+O k3s é um serviço systemd com `enabled`, então **o projeto sobe sozinho no boot
+da máquina**. Não existe "rodar o projeto": ele já está rodando.
+
+## Ver se está de pé
+
+```bash
+kubectl -n vigilante get pods
+```
+
+O esperado: `postgres-0`, `backend`, `mediamtx` (2/2, mediamtx + ffmpeg-loop),
+`cloudflared` e dois `frontend`, todos `Running` e `READY` cheio.
+
+Acessar: **https://vigilanteai.outis.com.br** (o cloudflared roda dentro do
+cluster e publica o Ingress).
+
+## Cadastrar câmera de teste
+
+Os vídeos de `media/*.mp4` são publicados como RTSP pelo sidecar `ffmpeg-loop`,
+dentro do próprio pod do mediamtx. No painel, cadastre com:
+
+- `source_kind`: `rtsp`
+- `rtsp_url`: `rtsp://mediamtx:8554/canteiro2` (troque pelo nome do arquivo sem extensão)
+
+Para adicionar um vídeo novo, jogue o `.mp4` em `media/` e reinicie o pod:
+
+```bash
+kubectl -n vigilante rollout restart deploy/mediamtx
+```
+
+## Depois de mexer no código
+
+Como o k3s foi instalado com `--docker`, ele enxerga as imagens do seu Docker
+direto. **Não existe `ctr images import` aqui.**
+
+```bash
+docker build --network host -t vigilante-backend:latest ./backend
+kubectl -n vigilante rollout restart deploy/backend
+kubectl -n vigilante rollout status deploy/backend
+```
+
+Mesma coisa para o frontend, trocando o nome da imagem e o deployment.
+
+## Logs e banco
+
+```bash
+kubectl -n vigilante logs -f deploy/backend
+kubectl -n vigilante logs -f deploy/mediamtx -c ffmpeg-loop
+kubectl -n vigilante exec -it postgres-0 -- psql -U vigilante -d vigilante
+```
+
+## Pausar sem desinstalar
+
+Sem sudo, zerando as réplicas:
+
+```bash
+kubectl -n vigilante scale deploy --all --replicas=0
+kubectl -n vigilante scale statefulset/postgres --replicas=0
+```
+
+Para voltar: `--replicas=1` (e `2` no frontend). Com sudo, `sudo systemctl stop k3s`
+derruba o cluster inteiro; `start` traz de volta com o estado intacto (o PVC
+sobrevive).
+
+## Voltar para o docker compose
+
+**Nunca rode os dois ao mesmo tempo.** As duas cópias do backend abrem as mesmas
+câmeras e duplicam alerta, e os dois cloudflared disputam o mesmo túnel.
+
+```bash
+kubectl -n vigilante scale deploy --all --replicas=0
+docker compose --profile rtsp up -d
+```
+
+## Desinstalar o k3s
+
+```bash
+sudo /usr/local/bin/k3s-uninstall.sh
+```
+
+Remove serviço, runtime e regras de rede. As imagens do Docker permanecem.
+
+## Armadilha conhecida
+
+Com `--docker`, o garbage collector de imagem do kubelet manda também nas suas
+imagens do Docker. Se o disco encher, ele apaga imagens sem container ativo, e
+isso inclui `vigilante-backend:latest` quando o cluster está parado. Se um pod
+começar a dar `ErrImagePull` do nada, é isso: rebuilde e siga.

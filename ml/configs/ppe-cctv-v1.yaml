@@ -1,13 +1,20 @@
-# YOLOv8 data config — 2-class PPE schema (canteiro: helmet + vest only).
-# Class indices match the runtime model (backend/app/detector.py::_ALL_EPI_CLASSES).
+# YOLOv8 data config — 4-class PPE schema: the equipment (helmet, vest) plus
+# the violation as its own detectable class (head, no_vest).
 
 path: ../datasets/merged
 train: images/train
 val: images/val
 test: images/test
 
-# Class indices MUST match the runtime mapping in backend/app/detector.py
-# so the trained weights drop in without remapping.
+# Indices 0 and 1 are unchanged, so existing weights stay comparable.
+#
+# 2 and 3 are the violations as first-class detections. Absence-inference made
+# every missed helmet an accusation (100% false alarm on real CCTV footage,
+# see ml/eval_compliant.py). Detecting a bare head requires positive evidence.
+# NOTE: backend/app/detector.py::_ALL_EPI_CLASSES still declares only 0/1.
+# It must be extended before weights trained on this config go to production.
 names:
   0: helmet
   1: vest
+  2: head
+  3: no_vest

@@ -2,8 +2,15 @@
 # Merge admin/supervisor feedback exports into the YOLO training dataset.
 #
 # Source layout (written by RetrainingExporter):
-#   ml/data/feedback/confirmed/<alert_id>.jpg + .txt   ← positives
-#   ml/data/feedback/rejected/<alert_id>.jpg  + .txt   ← negatives (empty .txt)
+#   ml/data/feedback/confirmed/<alert_id>.jpg    + .txt  ← merged (human-validated)
+#   ml/data/feedback/needs_review/<alert_id>.jpg + .txt  ← NOT merged
+#
+# Only `confirmed/` is merged. `needs_review/` holds rejected alerts, where the
+# reviewer asserted the worker WAS wearing the PPE, i.e. the detector missed a
+# box. Those frames carry an incomplete pre-annotation and must be corrected by
+# a human (Label Studio) before they are fit to train on. Merging them as-is
+# injects false negatives. The legacy `rejected/` directory wrote EMPTY labels
+# and is deliberately no longer read.
 #
 # Target layout (the existing 2-class canteiro split):
 #   ml/datasets/merged/images/train/<alert_id>.jpg
@@ -47,7 +54,7 @@ if [[ ! -d "${FEEDBACK_DIR}" ]]; then
   exit 1
 fi
 
-mkdir -p "${IMG_OUT}" "${LBL_OUT}" "${FEEDBACK_DIR}/merged/confirmed" "${FEEDBACK_DIR}/merged/rejected"
+mkdir -p "${IMG_OUT}" "${LBL_OUT}" "${FEEDBACK_DIR}/merged/confirmed"
 
 merged_count=0
 skipped_count=0
@@ -83,17 +90,31 @@ merge_decision() {
 
 echo "Merging feedback exports into ${DATASET_DIR}"
 merge_decision "confirmed"
-merge_decision "rejected"
+
+pending_review=0
+shopt -s nullglob
+for _ in "${FEEDBACK_DIR}/needs_review"/*.jpg "${FEEDBACK_DIR}/rejected"/*.jpg; do
+  pending_review=$((pending_review + 1))
+done
+shopt -u nullglob
 
 echo
 echo "Summary:"
-echo "  merged:  ${merged_count}"
-echo "  skipped: ${skipped_count}"
+echo "  merged:        ${merged_count}"
+echo "  skipped:       ${skipped_count}"
+echo "  needs review:  ${pending_review} (rejected alerts, NOT merged)"
+if [[ "${pending_review}" -gt 0 ]]; then
+  echo
+  echo "  Those frames are pre-annotations with a box missing. Correct them in"
+  echo "  Label Studio and move the result into ${FEEDBACK_DIR}/confirmed/"
+  echo "  before they can enter training. Anything still under the legacy"
+  echo "  ${FEEDBACK_DIR}/rejected/ has EMPTY labels and must be re-annotated."
+fi
 echo
 if [[ "${DRY_RUN}" == "1" ]]; then
-  echo "(dry run — no files moved)"
+  echo "(dry run, no files moved)"
 else
-  echo "Files archived under ${FEEDBACK_DIR}/merged/{confirmed,rejected}/"
+  echo "Files archived under ${FEEDBACK_DIR}/merged/confirmed/"
   echo "Re-run training (e.g. ml/run_pipeline.sh) when you have enough new"
   echo "samples to justify a fine-tune."
 fi

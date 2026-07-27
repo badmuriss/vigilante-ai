@@ -2,18 +2,29 @@
 
 When an admin/supervisor labels an alert as `correct` or `false_positive`,
 we copy the raw frame and emit a sibling `.txt` label file under
-`RETRAINING_EXPORT_PATH/{confirmed,rejected}/`. A separate merge script
-later pulls these into the canonical `ml/datasets/canteiro/` split.
+`RETRAINING_EXPORT_PATH/{confirmed,needs_review}/`. A separate merge script
+later pulls the auto-mergeable ones into the canonical training split.
 
 Design notes:
 - Idempotent: re-exporting the same alert overwrites prior files. Safe to
   call repeatedly when an admin flips their decision.
 - Class indices follow `ml/configs/*.yaml` (helmet=0, vest=1). Keep this
   map in sync if the YOLO config grows new classes.
-- `false_positive` exports an EMPTY label file. The frame becomes a
-  negative sample — the model learns there is no PPE violation in this
-  frame. Frames where no PPE was visible at all should not be exported
-  for retraining (filtered upstream by callers).
+- `false_positive` NEVER produces an empty label file, and never lands in
+  a directory the merge script consumes. Reasoning: an alert says "capacete
+  ausente". A reviewer rejecting it is asserting the worker WAS wearing the
+  helmet, i.e. the detector missed a real helmet. That frame is a false
+  NEGATIVE of the PPE model, not a background sample. Writing an empty
+  label would teach the model that every helmet and vest actually visible
+  in the frame does not exist, injecting one false negative per correct
+  detection present. Instead the frame lands in `needs_review/` with the
+  model's own boxes as a PRE-ANNOTATION for a human to correct (typically
+  by adding the missed box) before it can enter training.
+- `confirmed` labels are the model's own detections validated by a human.
+  They are pseudo-labels: the reviewer confirmed the violation, not the
+  tightness of each box, and any PPE the model scored below threshold is
+  silently absent. Good enough to auto-merge in small volumes; revisit if
+  fine-tuning on them starts degrading recall.
 """
 
 from __future__ import annotations
@@ -69,25 +80,26 @@ class RetrainingExporter:
             )
             return None
 
+        # Decode before writing anything: a frame we cannot size cannot be
+        # labelled, and a stray .jpg with no .txt just makes the merge script
+        # log a skip forever.
+        height, width = _image_dimensions(raw_bytes)
+        if width <= 0 or height <= 0:
+            logger.warning(
+                "Alert %s raw frame has invalid dims; skipping export", alert.id
+            )
+            return None
+
         out_dir = self._root / decision
         out_dir.mkdir(parents=True, exist_ok=True)
         img_out = out_dir / f"{alert.id}.jpg"
         lbl_out = out_dir / f"{alert.id}.txt"
         img_out.write_bytes(raw_bytes)
 
-        if decision == "rejected":
-            # Empty label = "this frame contains no helmet/vest worth alerting on".
-            lbl_out.write_text("")
-            return out_dir
-
-        # Confirmed — emit YOLO labels for the detections that triggered
-        # the alert. Confidence is dropped; YOLO labels are class + bbox.
-        height, width = _image_dimensions(raw_bytes)
-        if width <= 0 or height <= 0:
-            logger.warning("Alert %s raw frame has invalid dims; skipping label", alert.id)
-            lbl_out.write_text("")
-            return out_dir
-
+        # Both decisions emit the PPE the model saw. For `confirmed` these are
+        # validated labels. For `needs_review` they are a pre-annotation: the
+        # reviewer disagreed with the violation, so a box is missing and a
+        # human has to add it before this frame is fit to train on.
         lines = list(_iter_yolo_lines(alert.detected_bboxes or [], width, height))
         lbl_out.write_text("\n".join(lines) + ("\n" if lines else ""))
         return out_dir
@@ -97,7 +109,9 @@ class RetrainingExporter:
         if feedback == "correct":
             return "confirmed"
         if feedback == "false_positive":
-            return "rejected"
+            # NOT "rejected"/negative. See module docstring: a rejected
+            # violation means the detector missed real PPE.
+            return "needs_review"
         return None
 
 

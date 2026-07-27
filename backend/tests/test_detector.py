@@ -1,7 +1,9 @@
-"""Tests for SafetyDetector: 2-class PPE model, Portuguese labels, annotation.
+"""Tests for SafetyDetector: 4-class PPE model, Portuguese labels, annotation.
 
-Scope is capacete + colete only (canteiro civil); oculos/mascara/luvas/botas
-were dropped from the model on purpose, see docs/roadmap-tcc-outubro-2026.md.
+Scope is capacete + colete (canteiro civil) plus the two VIOLATION classes
+(cabeca_descoberta / sem_colete) that make a violation positively detectable
+instead of inferred from the absence of PPE. oculos/mascara/luvas/botas were
+dropped from the model on purpose, see docs/roadmap-tcc-outubro-2026.md.
 
 Covers: MODL-01 (model loading), MODL-02 (Portuguese labels).
 """
@@ -14,36 +16,87 @@ import numpy as np
 import pytest
 
 from app.detector import (
+    ALL_CLASS_LABELS_PT,
     EPI_CLASSES,
     EPI_LABELS_PT,
     GREEN,
     LABEL_BG,
     RED,
+    VIOLATION_OF,
     SafetyDetector,
 )
 from app.models import Detection
 
-# Class names of the trained weights (ml/configs/ppe-cctv-v1.yaml).
+# Class names of the legacy 2-class weights, still shipped as backend/best.pt.
 MODEL_NAMES = {0: "helmet", 1: "vest"}
+# Class names of the 4-class weights (ml/prepare/merge_datasets.py).
+MODEL_NAMES_4 = {0: "helmet", 1: "vest", 2: "head", 3: "no_vest"}
+
+
+def _load(names: dict[int, str]) -> SafetyDetector:
+    detector = SafetyDetector()
+    mock_model = MagicMock()
+    mock_model.names = names
+    with patch("app.detector.YOLO", return_value=mock_model):
+        detector.load_model()
+    return detector
 
 
 class TestModelLoadsPpeClasses:
-    """MODL-01: Detector loads the 2-class PPE model with correct class mapping."""
+    """MODL-01: Detector loads the PPE model with correct class mapping."""
 
-    def test_epi_classes_has_2_entries(self) -> None:
-        """EPI_CLASSES maps the 2 weight indices to Portuguese keys."""
-        assert EPI_CLASSES == {0: "capacete", 1: "colete"}
+    def test_epi_classes_has_4_entries(self) -> None:
+        """EPI_CLASSES maps the 4 weight indices to Portuguese keys."""
+        assert EPI_CLASSES == {
+            0: "capacete",
+            1: "colete",
+            2: "cabeca_descoberta",
+            3: "sem_colete",
+        }
+
+    def test_old_2class_weights_still_load(self) -> None:
+        """backend/best.pt is still the 2-class model: it must load, map both
+        classes, and report that it cannot detect violations directly."""
+        detector = _load(MODEL_NAMES)
+
+        assert detector.is_loaded
+        assert detector._class_map == {0: "capacete", 1: "colete"}
+        assert detector.has_violation_classes is False
+
+    def test_4class_weights_map_violations(self) -> None:
+        detector = _load(MODEL_NAMES_4)
+
+        assert detector._class_map == {
+            0: "capacete",
+            1: "colete",
+            2: "cabeca_descoberta",
+            3: "sem_colete",
+        }
+        assert detector.has_violation_classes is True
+
+    def test_class_map_follows_names_not_indices(self) -> None:
+        """Weights that order the classes differently still map correctly —
+        the mapping is by name, so a reordered export cannot silently swap
+        helmet and vest."""
+        detector = _load({0: "no_vest", 1: "Hard-Hat", 2: "Safety Vest"})
+
+        assert detector._class_map == {
+            0: "sem_colete",
+            1: "capacete",
+            2: "colete",
+        }
+
+    def test_unknown_class_name_does_not_crash(self) -> None:
+        """An unrecognised name falls back to the positional default instead
+        of blowing up model loading."""
+        detector = _load({0: "helmet", 1: "mystery_class"})
+
+        assert detector.is_loaded
+        assert detector._class_map == {0: "capacete", 1: "colete"}
 
     def test_model_loads_ppe_classes(self) -> None:
         """SafetyDetector.load_model loads best.pt and validates class names."""
-        detector = SafetyDetector()
-
-        # Mock YOLO so we don't need the real model file
-        mock_model = MagicMock()
-        mock_model.names = MODEL_NAMES
-
-        with patch("app.detector.YOLO", return_value=mock_model):
-            detector.load_model()
+        detector = _load(MODEL_NAMES)
 
         assert detector.is_loaded
 
@@ -114,14 +167,21 @@ class TestPortugueseLabels:
     """MODL-02: Detection labels are mapped to Portuguese."""
 
     def test_portuguese_labels_mapping(self) -> None:
-        """EPI_LABELS_PT has a display label for every EPI class."""
+        """Every class the model can emit has a display label."""
         for key in EPI_CLASSES.values():
-            assert key in EPI_LABELS_PT, f"Missing Portuguese label for {key}"
-            assert EPI_LABELS_PT[key], f"Empty label for {key}"
+            assert key in ALL_CLASS_LABELS_PT, f"Missing Portuguese label for {key}"
+            assert ALL_CLASS_LABELS_PT[key], f"Empty label for {key}"
 
     def test_labels_are_capitalized_portuguese(self) -> None:
         """Portuguese labels start with uppercase and use correct translations."""
         assert EPI_LABELS_PT == {"capacete": "Capacete", "colete": "Colete"}
+
+    def test_violation_classes_are_not_selectable_epis(self) -> None:
+        """Violations are evidence, not equipment: they must stay out of the
+        user-facing EPI toggle list that main.py builds from EPI_LABELS_PT."""
+        assert set(VIOLATION_OF) == {"cabeca_descoberta", "sem_colete"}
+        assert not set(VIOLATION_OF) & set(EPI_LABELS_PT)
+        assert set(VIOLATION_OF.values()) == set(EPI_LABELS_PT)
 
 
 def _has_color(frame: np.ndarray, bgr: tuple[int, int, int]) -> bool:

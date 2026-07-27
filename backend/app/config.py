@@ -11,6 +11,17 @@ class Settings(BaseSettings):
     # is distinctive enough that low-confidence boxes are usually real.
     HELMET_CONFIDENCE_THRESHOLD: float = 0.15
     VEST_CONFIDENCE_THRESHOLD: float = 0.10
+    # Violation classes (cabeca_descoberta / sem_colete). Stricter floor: a
+    # false violation box goes straight to the operator as a false alarm,
+    # while a missed one only costs a missed alert. Tune after training.
+    VIOLATION_CONFIDENCE_THRESHOLD: float = 0.35
+    # Does the ABSENCE of a PPE detection count as a violation?
+    #   "auto" (default) — only when the loaded weights cannot detect the
+    #                      violation directly (legacy 2-class best.pt).
+    #                      4-class weights => positive evidence only.
+    #   "on"             — legacy behaviour, absence always alerts.
+    #   "off"            — never alert on absence alone, even on old weights.
+    ABSENCE_IMPLIES_VIOLATION: str = "auto"
     MODEL_INPUT_SIZE: int = 960
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     HOST: str = "0.0.0.0"

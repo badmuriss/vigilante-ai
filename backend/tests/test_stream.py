@@ -14,9 +14,12 @@ from typing import Callable
 
 import pytest
 
+from unittest.mock import PropertyMock
+
 from app import stream as stream_mod
+from app.config import settings
 from app.models import Detection
-from app.stream import StreamProcessor, _evaluate_person
+from app.stream import StreamProcessor, _absence_implies_violation, _evaluate_person
 
 # Person tall enough for the head zone to count as visible
 # (py1 > HEAD_VISIBLE_TOP_MARGIN_PX, height >= HEAD_VISIBLE_MIN_PERSON_HEIGHT_PX).
@@ -24,6 +27,13 @@ from app.stream import StreamProcessor, _evaluate_person
 PERSON_BBOX = (100, 50, 300, 450)
 HELMET_DET = Detection(class_name="capacete", confidence=0.9, bbox=(150, 60, 250, 120))
 VEST_DET = Detection(class_name="colete", confidence=0.85, bbox=(150, 150, 250, 300))
+# Positive evidence of violations, from the 4-class model.
+BARE_HEAD_DET = Detection(
+    class_name="cabeca_descoberta", confidence=0.8, bbox=(150, 60, 250, 120)
+)
+NO_VEST_DET = Detection(
+    class_name="sem_colete", confidence=0.8, bbox=(150, 150, 250, 300)
+)
 
 
 def _wait_for(pred: Callable[[], object], what: str, timeout: float = 3.0) -> None:
@@ -229,9 +239,9 @@ class TestEpiFilter:
         seen: list[set[str]] = []
         real_evaluate = stream_mod._evaluate_person
 
-        def recording_evaluate(person_bbox, ppe_dets, active):  # type: ignore[no-untyped-def]
+        def recording_evaluate(person_bbox, ppe_dets, active, *args):  # type: ignore[no-untyped-def]
             seen.append(set(active))
-            return real_evaluate(person_bbox, ppe_dets, active)
+            return real_evaluate(person_bbox, ppe_dets, active, *args)
 
         monkeypatch.setattr(stream_mod, "_evaluate_person", recording_evaluate)
 
@@ -308,3 +318,160 @@ class TestMissingEpiAlerts:
         assert len(alerts) == 0, (
             f"Expected no alerts when no EPIs detected, got {len(alerts)}"
         )
+
+
+ACTIVE = {"capacete", "colete"}
+# Median worker height in the real CCTV footage is 58px — below
+# HEAD_VISIBLE_MIN_PERSON_HEIGHT_PX, which disables the helmet check.
+SHORT_PERSON_BBOX = (100, 300, 140, 358)
+SHORT_BARE_HEAD_DET = Detection(
+    class_name="cabeca_descoberta", confidence=0.8, bbox=(105, 300, 135, 314)
+)
+
+
+def _enable_violation_classes(processor: StreamProcessor) -> None:
+    """Make the mocked detector look like the 4-class weights."""
+    type(processor._detector).has_violation_classes = PropertyMock(return_value=True)
+
+
+class TestPositiveEvidenceViolations:
+    """A violation must be SEEN, not inferred from the silence of the PPE
+    detector. Absence-inference measured a 100% helmet false alarm rate on
+    compliant CCTV footage (ml/eval_compliant.py)."""
+
+    def test_bare_head_detection_is_a_violation(self) -> None:
+        ev, _ = _evaluate_person(
+            PERSON_BBOX, [VEST_DET, BARE_HEAD_DET], ACTIVE,
+            absence_implies_violation=False,
+        )
+
+        assert ev.violated == {"capacete"}
+        assert ev.missing == {"capacete"}
+        assert ev.present == {"colete"}
+        # The bare-head box is evidence, never drawn as worn PPE.
+        assert [d.class_name for d in ev.matched] == ["colete"]
+
+    def test_no_vest_detection_is_a_violation(self) -> None:
+        ev, _ = _evaluate_person(
+            PERSON_BBOX, [HELMET_DET, NO_VEST_DET], ACTIVE,
+            absence_implies_violation=False,
+        )
+
+        assert ev.missing == {"colete"}
+        assert ev.present == {"capacete"}
+
+    def test_undetected_helmet_is_not_a_violation(self) -> None:
+        """Nothing on the head at all: no helmet box AND no bare-head box.
+        Positive-evidence mode stays silent — this is the false alarm."""
+        ev, _ = _evaluate_person(
+            PERSON_BBOX, [VEST_DET], ACTIVE, absence_implies_violation=False,
+        )
+
+        assert ev.violated == set()
+        assert ev.missing == set()
+
+    def test_absence_fallback_still_flags_undetected_helmet(self) -> None:
+        """Legacy behaviour on the old 2-class weights, unchanged."""
+        ev, _ = _evaluate_person(
+            PERSON_BBOX, [VEST_DET], ACTIVE, absence_implies_violation=True,
+        )
+
+        assert ev.missing == {"capacete"}
+        assert ev.violated == set()
+
+    def test_violation_bypasses_head_visibility_gate(self) -> None:
+        """A person shorter than HEAD_VISIBLE_MIN_PERSON_HEIGHT_PX is undecidable
+        by absence, but seeing the bare head proves the head is visible."""
+        ev_absence, checkable_absence = _evaluate_person(
+            SHORT_PERSON_BBOX, [], ACTIVE, absence_implies_violation=True,
+        )
+        assert "capacete" not in checkable_absence
+        assert ev_absence.missing == {"colete"}  # torso still decidable
+
+        ev_positive, checkable_positive = _evaluate_person(
+            SHORT_PERSON_BBOX, [SHORT_BARE_HEAD_DET], ACTIVE,
+            absence_implies_violation=False,
+        )
+        assert "capacete" in checkable_positive
+        assert ev_positive.missing == {"capacete"}
+
+
+class TestAbsenceModeResolution:
+    """config.ABSENCE_IMPLIES_VIOLATION: auto follows the loaded weights."""
+
+    def test_auto_follows_model_capability(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ABSENCE_IMPLIES_VIOLATION", "auto")
+
+        legacy = type("D", (), {"has_violation_classes": False})()
+        four_class = type("D", (), {"has_violation_classes": True})()
+
+        assert _absence_implies_violation(legacy) is True
+        assert _absence_implies_violation(four_class) is False
+
+    def test_forced_modes_override_the_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        four_class = type("D", (), {"has_violation_classes": True})()
+
+        monkeypatch.setattr(settings, "ABSENCE_IMPLIES_VIOLATION", "on")
+        assert _absence_implies_violation(four_class) is True
+
+        monkeypatch.setattr(settings, "ABSENCE_IMPLIES_VIOLATION", "off")
+        assert _absence_implies_violation(four_class) is False
+
+    def test_detector_without_the_attribute_degrades_to_legacy(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "ABSENCE_IMPLIES_VIOLATION", "auto")
+
+        assert _absence_implies_violation(object()) is True  # type: ignore[arg-type]
+
+
+class TestPositiveEvidenceAlerts:
+    """End-to-end through StreamProcessor with the 4-class model."""
+
+    def test_bare_head_triggers_alert(  # type: ignore[no-untyped-def]
+        self, stream_processor: StreamProcessor, alert_manager, fast_smoothing: None
+    ) -> None:
+        _enable_violation_classes(stream_processor)
+        stream_processor._detector.detect.return_value = [VEST_DET, BARE_HEAD_DET]  # type: ignore[attr-defined]
+        stream_processor._detector.detect_persons.return_value = [PERSON_BBOX]  # type: ignore[attr-defined]
+
+        stream_processor.set_active_epis(ACTIVE)
+        stream_processor.start()
+        try:
+            _wait_for(alert_manager.get_alerts, "alert for bare head")
+            alerts = alert_manager.get_alerts()
+        finally:
+            stream_processor.stop()
+
+        assert alerts[0].missing_epis == ["Capacete"]
+        assert "Capacete" in alerts[0].violation_type
+
+    def test_undetected_helmet_triggers_no_alert(  # type: ignore[no-untyped-def]
+        self, stream_processor: StreamProcessor, alert_manager, fast_smoothing: None
+    ) -> None:
+        """Same frame as test_alert_uses_portuguese_label (vest worn, helmet
+        never detected) — with the 4-class model this is NOT an alert."""
+        _enable_violation_classes(stream_processor)
+        stream_processor._detector.detect.return_value = [VEST_DET]  # type: ignore[attr-defined]
+        stream_processor._detector.detect_persons.return_value = [PERSON_BBOX]  # type: ignore[attr-defined]
+
+        stream_processor.set_active_epis(ACTIVE)
+        stream_processor.start()
+        try:
+            time.sleep(0.5)  # > SMOOTHING_TO_MISSING_S under fast_smoothing
+            alerts = alert_manager.get_alerts()
+        finally:
+            stream_processor.stop()
+
+        assert alerts == [], f"absence must not alert on 4-class weights: {alerts}"
+
+    def test_violation_classes_are_not_selectable_epis(
+        self, stream_processor: StreamProcessor
+    ) -> None:
+        stream_processor.set_active_epis({"capacete", "cabeca_descoberta"})
+
+        assert stream_processor.active_epis == {"capacete"}

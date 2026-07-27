@@ -34,6 +34,10 @@ def mock_detector() -> SafetyDetector:
     detector = MagicMock(spec=SafetyDetector)
 
     type(detector).is_loaded = PropertyMock(return_value=True)
+    # Emulates the legacy 2-class weights: no violation classes, so "auto"
+    # resolves to absence-inference. Tests that want positive-evidence mode
+    # flip this explicitly.
+    type(detector).has_violation_classes = PropertyMock(return_value=False)
     detector.load_model.return_value = None
     detector.detect.return_value = []
     detector.detect_persons.return_value = []

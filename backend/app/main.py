@@ -190,6 +190,17 @@ async def lifespan(app: FastAPI):
     registry.load_from_db()
     _ensure_legacy_camera()
     _seed_knowledge_base()
+    # Carrega o YOLO no boot em vez de esperar a primeira câmera. Duas razões:
+    # o /readyz afirma "model" e sem isto ele nunca vira verdadeiro num pod sem
+    # stream, e a primeira câmera abre instantânea em vez de pagar o load. Falha
+    # aqui não derruba o processo de propósito: o /readyz continua 503 e o pod
+    # simplesmente não recebe tráfego, que é o comportamento correto.
+    try:
+        detector.load_model()
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("YOLO load failed at startup")
     yield
     registry.shutdown()
     whatsapp_notifier.shutdown(wait=False)

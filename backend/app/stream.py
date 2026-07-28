@@ -13,10 +13,13 @@ from collections import deque
 from typing import Deque
 
 from app.alerts import AlertManager
+from app.config import settings
 from app.detector import (
+    ALL_CLASS_LABELS_PT,
     FACE_CLASS_KEY,
     EPI_ALERT_LABELS,
     EPI_LABELS_PT,
+    VIOLATION_OF,
     Detection,
     SafetyDetector,
 )
@@ -74,7 +77,7 @@ CLASS_STREAK_RESET_GAP_S = 2.5
 
 
 class PersonEval:
-    __slots__ = ("bbox", "present", "missing", "matched")
+    __slots__ = ("bbox", "present", "missing", "matched", "violated")
 
     def __init__(
         self,
@@ -82,11 +85,15 @@ class PersonEval:
         present: set[str],
         missing: set[str],
         matched: list[Detection],
+        violated: set[str] | None = None,
     ) -> None:
         self.bbox = bbox
         self.present = present
         self.missing = missing
         self.matched = matched
+        # EPI keys with POSITIVE evidence of violation (a bare-head / no-vest
+        # box overlapping this person), as opposed to merely undetected PPE.
+        self.violated = violated if violated is not None else set()
 
 
 def _iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
@@ -115,14 +122,68 @@ def _bbox_overlap_ratio(
     return inter / inner_area
 
 
+def _bump_streak(tr: dict, last_key: str, start_key: str, cls: str, now: float) -> None:
+    """Extend (or restart, after a gap) a per-class evidence streak on a track."""
+    last_map = tr.setdefault(last_key, {})
+    start_map = tr.setdefault(start_key, {})
+    last = last_map.get(cls)
+    if last is None or (now - last) > CLASS_STREAK_RESET_GAP_S:
+        start_map[cls] = now
+    last_map[cls] = now
+
+
+def _absence_implies_violation(detector: SafetyDetector) -> bool:
+    """Whether "PPE not detected" alone counts as a violation.
+
+    "auto" resolves to False as soon as the loaded weights can detect the
+    violation directly — absence-inference is what produced a 100% helmet
+    false alarm rate on compliant CCTV footage (ml/eval_compliant.py)."""
+    mode = settings.ABSENCE_IMPLIES_VIOLATION.strip().lower()
+    if mode == "on":
+        return True
+    if mode == "off":
+        return False
+    return not bool(getattr(detector, "has_violation_classes", False))
+
+
+def _absence_classes(detector: SafetyDetector, active: set[str]) -> set[str]:
+    """Which EPI keys still fall back to absence-inference, decided per class.
+
+    Coarse on/off would be wrong: the 4-class weights detect a bare head well
+    (recall 0.80) but sem_colete not at all (recall 0.00 on 20 training boxes).
+    Retiring absence-inference for every class at once would leave vests with
+    no detector and no fallback, silently ending vest enforcement."""
+    mode = settings.ABSENCE_IMPLIES_VIOLATION.strip().lower()
+    if mode == "on":
+        return set(active)
+    if mode == "off":
+        return set()
+    covered = getattr(detector, "trusted_violation_equipment", None) or set()
+    return {cls for cls in active if cls not in covered}
+
+
 def _evaluate_person(
     person_bbox: tuple[int, int, int, int],
     ppe_dets: list[Detection],
     active: set[str],
+    absence_implies_violation: bool | set[str] = True,
 ) -> tuple["PersonEval", set[str]]:
     """Returns (eval, checkable_classes). Classes not in checkable should be
     treated as undecidable for this person — typically because the body part
-    needed to assess them is not visible in frame."""
+    needed to assess them is not visible in frame.
+
+    A violation is preferably established by POSITIVE evidence: a
+    cabeca_descoberta / sem_colete box overlapping the matching body zone.
+    Absence-inference ("no helmet box => no helmet") is the fallback. Pass True
+    to apply it to every active class, False to none, or the explicit set of
+    classes that still need it (see _absence_classes)."""
+    if absence_implies_violation is True:
+        absence = set(active)
+    elif absence_implies_violation is False:
+        absence = set()
+    else:
+        absence = set(absence_implies_violation)
+
     px1, py1, px2, py2 = person_bbox
     ph = py2 - py1
     head_visible = (
@@ -133,22 +194,34 @@ def _evaluate_person(
     torso_zone = (px1, py1 + int(ph * 0.20), px2, py1 + int(ph * 0.70))
 
     checkable = set(active)
-    if not head_visible:
+    if not head_visible and "capacete" in absence:
+        # Guessing from absence needs the head to be plausibly visible.
+        # Positive evidence needs no such guard: seeing a bare head IS the
+        # proof that the head is visible.
         checkable.discard("capacete")
 
     present: set[str] = set()
+    violated: set[str] = set()
     matched: list[Detection] = []
     for d in ppe_dets:
-        if d.class_name not in active:
+        violates = VIOLATION_OF.get(d.class_name)
+        cls = violates or d.class_name
+        # A violation that was SEEN is decidable by definition; PPE presence
+        # is only assessed for classes this person's visible body allows.
+        if cls not in (active if violates else checkable):
             continue
-        if d.class_name not in checkable:
+        zone = head_zone if cls == "capacete" else torso_zone
+        if _bbox_overlap_ratio(d.bbox, zone) < PPE_PERSON_MIN_OVERLAP:
             continue
-        zone = head_zone if d.class_name == "capacete" else torso_zone
-        if _bbox_overlap_ratio(d.bbox, zone) >= PPE_PERSON_MIN_OVERLAP:
-            present.add(d.class_name)
+        if violates:
+            violated.add(cls)
+        else:
+            present.add(cls)
             matched.append(d)
-    missing = checkable - present
-    return PersonEval(person_bbox, present, missing, matched), checkable
+
+    missing = set(violated)
+    missing |= (checkable & absence) - present
+    return PersonEval(person_bbox, present, missing, matched, violated), checkable
 
 
 def _annotate_per_person(
@@ -251,8 +324,10 @@ class StreamProcessor:
             return self._active_epis.copy()
 
     def set_active_epis(self, epis: set[str]) -> None:
+        # Only real EPIs are selectable. Violation classes are evidence, and
+        # main.py derives its valid-key set from EPI_CLASSES, which has them.
         with self._epi_lock:
-            self._active_epis = epis.copy()
+            self._active_epis = {e for e in epis if e in EPI_LABELS_PT}
 
     @property
     def color_palettes(self) -> dict[str, list[tuple[tuple[int, int, int], tuple[int, int, int]]]] | None:
@@ -369,15 +444,17 @@ class StreamProcessor:
             with self._epi_lock:
                 active = self._active_epis.copy()
             visible_faces = [d for d in detections if d.class_name == FACE_CLASS_KEY]
-            ppe_dets = [d for d in detections if d.class_name in EPI_LABELS_PT]
+            # Includes the violation classes — they are the positive evidence.
+            ppe_dets = [d for d in detections if d.class_name in ALL_CLASS_LABELS_PT]
 
             now = time.monotonic()
+            absence_ok = _absence_classes(self._detector, active)  # per-class set
 
             # Per-frame raw evaluation per detected person.
             raw_evals: list[PersonEval] = []
             raw_checkable: list[set[str]] = []
             for pbox in persons:
-                ev, ck = _evaluate_person(pbox, ppe_dets, active)
+                ev, ck = _evaluate_person(pbox, ppe_dets, active, absence_ok)
                 raw_evals.append(ev)
                 raw_checkable.append(ck)
 
@@ -404,14 +481,18 @@ class StreamProcessor:
                     for d in ev.matched:
                         last_det_per_cls[d.class_name] = d
                     for cls in active:
-                        seen_now = cls in ev.present
-                        last = best_tr["last_class_seen"].get(cls)
-                        streak_start = best_tr["class_streak_start"].get(cls)
-                        if seen_now:
-                            if last is None or (now - last) > CLASS_STREAK_RESET_GAP_S:
-                                streak_start = now
-                            best_tr["class_streak_start"][cls] = streak_start
-                            best_tr["last_class_seen"][cls] = now
+                        if cls in ev.present:
+                            _bump_streak(
+                                best_tr, "last_class_seen", "class_streak_start", cls, now
+                            )
+                        if cls in ev.violated:
+                            _bump_streak(
+                                best_tr,
+                                "last_violation_seen",
+                                "violation_streak_start",
+                                cls,
+                                now,
+                            )
                 else:
                     # No status snapshot. New tracks start fully UNDEFINED
                     # for every active class. A status only commits after
@@ -422,6 +503,8 @@ class StreamProcessor:
                         "last_seen": now,
                         "last_class_seen": {cls: now for cls in ev.present},
                         "class_streak_start": {cls: now for cls in ev.present},
+                        "last_violation_seen": {cls: now for cls in ev.violated},
+                        "violation_streak_start": {cls: now for cls in ev.violated},
                         "class_status": {},  # undefined
                         "last_matched_dets": ev.matched,
                         "last_det_per_cls": {d.class_name: d for d in ev.matched},
@@ -453,32 +536,49 @@ class StreamProcessor:
                 for cls in active:
                     last_t = tr["last_class_seen"].get(cls)
                     streak_start = tr["class_streak_start"].get(cls)
+                    vio_t = tr.get("last_violation_seen", {}).get(cls)
+                    vio_start = tr.get("violation_streak_start", {}).get(cls)
                     current = cstatus.get(cls)
 
+                    present_committed = (
+                        streak_start is not None
+                        and last_t is not None
+                        and (now - last_t) <= CLASS_STREAK_RESET_GAP_S
+                        and (now - streak_start) >= SMOOTHING_TO_PRESENT_S
+                    )
+                    # Positive evidence of violation, held for the same
+                    # cautious window absence-inference used to demand.
+                    violation_committed = (
+                        vio_start is not None
+                        and vio_t is not None
+                        and (now - vio_t) <= CLASS_STREAK_RESET_GAP_S
+                        and (now - vio_start) >= SMOOTHING_TO_MISSING_S
+                    )
+
                     if current == "present":
-                        if last_t is None or (now - last_t) >= SMOOTHING_TO_MISSING_S:
+                        # Contradictory evidence (helmet AND bare head boxes on
+                        # the same person) resolves toward the violation.
+                        if violation_committed or (
+                            cls in absence_ok
+                            and (last_t is None or (now - last_t) >= SMOOTHING_TO_MISSING_S)
+                        ):
                             cstatus[cls] = "missing"
                     elif current == "missing":
-                        if (
-                            streak_start is not None
-                            and last_t is not None
-                            and (now - last_t) <= CLASS_STREAK_RESET_GAP_S
-                            and (now - streak_start) >= SMOOTHING_TO_PRESENT_S
-                        ):
+                        if present_committed and not violation_committed:
                             cstatus[cls] = "present"
                     else:
                         # Undefined first commit:
+                        #   * "missing" needs a violation streak (or, in legacy
+                        #     absence mode, TO_MISSING_S without any sighting)
                         #   * "present" earns its way in with TO_PRESENT_S of streak
-                        #   * "missing" only after TO_MISSING_S without any sighting
-                        if (
-                            streak_start is not None
-                            and last_t is not None
-                            and (now - last_t) <= CLASS_STREAK_RESET_GAP_S
-                            and (now - streak_start) >= SMOOTHING_TO_PRESENT_S
+                        if violation_committed or (
+                            cls in absence_ok
+                            and last_t is None
+                            and age >= SMOOTHING_TO_MISSING_S
                         ):
-                            cstatus[cls] = "present"
-                        elif last_t is None and age >= SMOOTHING_TO_MISSING_S:
                             cstatus[cls] = "missing"
+                        elif present_committed:
+                            cstatus[cls] = "present"
 
                 missing = {
                     cls for cls in active

@@ -14,21 +14,63 @@ from app.models import Detection
 
 logger = logging.getLogger(__name__)
 
-# 2-class PPE model — canteiro civil (capacete + colete alta visibilidade).
-# Indices match the YOLO weights produced by ml/train.py + ml/configs/ppe-cctv-v1.yaml.
+# 4-class PPE model — canteiro civil. Indices 0/1 are the PPE itself and are
+# unchanged from the old 2-class weights, so backend/best.pt keeps working.
+# Indices 2/3 are the VIOLATIONS as detectable classes: an uncovered head must
+# be SEEN, not inferred from the silence of the helmet detector (that inference
+# measured a 100% false alarm rate on real CCTV footage, ml/eval_compliant.py).
 _ALL_EPI_CLASSES: dict[int, str] = {
     0: "capacete",
     1: "colete",
+    2: "cabeca_descoberta",
+    3: "sem_colete",
 }
 
 MVP_EPI_KEYS = {"capacete", "colete"}
 
 EPI_CLASSES: dict[int, str] = dict(_ALL_EPI_CLASSES)
 
+# Violation class key -> the EPI key it proves missing.
+VIOLATION_OF: dict[str, str] = {
+    "cabeca_descoberta": "capacete",
+    "sem_colete": "colete",
+}
+
+# User-selectable EPIs (what the UI toggles). Violations are never selectable —
+# they are evidence, not equipment.
 EPI_LABELS_PT: dict[str, str] = {
     "capacete": "Capacete",
     "colete": "Colete",
 }
+
+# Every class the detector can emit, for drawing / filtering.
+ALL_CLASS_LABELS_PT: dict[str, str] = {
+    **EPI_LABELS_PT,
+    "cabeca_descoberta": "Cabeça descoberta",
+    "sem_colete": "Sem colete",
+}
+
+# Class names as they appear inside the trained weights (English) -> internal
+# PT keys. Covers the old 2-class weights ('helmet','vest') and the 4-class
+# ones ('helmet','vest','head','no_vest'), plus common dataset synonyms.
+WEIGHT_NAME_TO_KEY: dict[str, str] = {
+    "helmet": "capacete",
+    "hardhat": "capacete",
+    "hard_hat": "capacete",
+    "vest": "colete",
+    "safety_vest": "colete",
+    "head": "cabeca_descoberta",
+    "no_helmet": "cabeca_descoberta",
+    "no_hardhat": "cabeca_descoberta",
+    "no_vest": "sem_colete",
+    "no_safety_vest": "sem_colete",
+    # weights already trained with PT names map to themselves
+    **{k: k for k in ALL_CLASS_LABELS_PT},
+}
+
+
+def _normalize_weight_name(name: object) -> str:
+    return str(name).strip().lower().replace("-", "_").replace(" ", "_")
 
 FACE_CLASS_KEY = "rosto"
 FACE_LABEL_PT = "Rosto"
@@ -70,6 +112,10 @@ class SafetyDetector:
     def __init__(self) -> None:
         self._model: YOLO | None = None
         self._person_model: YOLO | None = None
+        # index -> internal PT key, resolved from the loaded weights. Empty
+        # until load_model, so an unloaded detector never claims violation
+        # capability (that would silently disable the absence fallback).
+        self._class_map: dict[int, str] = {}
         cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
         self._face_cascade = cv2.CascadeClassifier(str(cascade_path))
 
@@ -77,15 +123,57 @@ class SafetyDetector:
     def is_loaded(self) -> bool:
         return self._model is not None
 
+    @property
+    def has_violation_classes(self) -> bool:
+        """True when the loaded weights can positively detect a violation
+        (bare head / no vest). False for the legacy 2-class weights."""
+        return any(k in VIOLATION_OF for k in self._class_map.values())
+
+    @property
+    def trusted_violation_equipment(self) -> set[str]:
+        """EPI keys whose violation the loaded weights are trusted to detect.
+
+        Presence of a class in the weights is not evidence that it works:
+        sem_colete ships in the 4-class model with recall 0.00. Only classes
+        named in settings.TRUSTED_VIOLATION_CLASSES may retire the
+        absence-inference fallback for their equipment."""
+        trusted = {
+            name.strip().lower()
+            for name in settings.TRUSTED_VIOLATION_CLASSES.split(",")
+            if name.strip()
+        }
+        return {
+            VIOLATION_OF[k]
+            for k in self._class_map.values()
+            if k in VIOLATION_OF and k in trusted
+        }
+
     def load_model(self) -> None:
         self._model = YOLO(settings.MODEL_PATH)
         model_classes: dict[int, str] = self._model.names
         class_names = set(model_classes.values())
 
+        # Map by NAME, not by index, so 2-class and 4-class weights both load.
+        # Unknown names fall back to the positional default (old behaviour).
+        self._class_map = {}
+        for idx, raw_name in model_classes.items():
+            key = WEIGHT_NAME_TO_KEY.get(_normalize_weight_name(raw_name))
+            if key is None:
+                key = EPI_CLASSES.get(int(idx))
+                if key is None:
+                    continue
+                logger.warning(
+                    "Unknown class name %r at index %s; falling back to %r",
+                    raw_name, idx, key,
+                )
+            self._class_map[int(idx)] = key
+
         logger.info(
-            "PPE model loaded with %d classes: %s",
+            "PPE model loaded with %d classes: %s -> %s (violation classes: %s)",
             len(model_classes),
             class_names,
+            self._class_map,
+            self.has_violation_classes,
         )
 
         # COCO general-purpose model for person detection. Used to enforce
@@ -171,18 +259,21 @@ class SafetyDetector:
                     confidence = float(box.conf[0].item())
                     x1, y1, x2, y2 = (int(v * inv_scale) for v in box.xyxy[0].tolist())
 
-                    class_key = EPI_CLASSES.get(class_id)
+                    class_key = self._class_map.get(class_id)
                     if class_key is None:
                         continue
 
-                    # Per-class confidence floor (helmet stricter than vest).
-                    class_floor = (
-                        settings.HELMET_CONFIDENCE_THRESHOLD
-                        if class_key == "capacete"
-                        else settings.VEST_CONFIDENCE_THRESHOLD
-                        if class_key == "colete"
-                        else settings.CONFIDENCE_THRESHOLD
-                    )
+                    # Per-class confidence floor (helmet stricter than vest;
+                    # violations stricter still — a false violation box is a
+                    # false alarm straight to the operator).
+                    if class_key == "capacete":
+                        class_floor = settings.HELMET_CONFIDENCE_THRESHOLD
+                    elif class_key == "colete":
+                        class_floor = settings.VEST_CONFIDENCE_THRESHOLD
+                    elif class_key in VIOLATION_OF:
+                        class_floor = settings.VIOLATION_CONFIDENCE_THRESHOLD
+                    else:
+                        class_floor = settings.CONFIDENCE_THRESHOLD
                     if confidence < class_floor:
                         continue
 
@@ -271,7 +362,7 @@ class SafetyDetector:
                 color = BLUE
                 label_bg = FACE_LABEL_BG
             else:
-                label = EPI_LABELS_PT.get(det.class_name, det.class_name)
+                label = ALL_CLASS_LABELS_PT.get(det.class_name, det.class_name)
                 color = GREEN
                 label_bg = LABEL_BG
 

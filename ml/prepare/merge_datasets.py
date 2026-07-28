@@ -29,15 +29,40 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("merge")
 
 # Target taxonomy — must match backend/app/detector.py::_ALL_EPI_CLASSES
-# 2-class MVP: only helmet + high-visibility vest.
+#
+# 4 classes: the PPE itself, plus the VIOLATION as its own detectable class.
+# Indices 0/1 are unchanged so older weights stay comparable.
+#
+# Why `head` and `no_vest` exist. With helmet/vest only, "capacete ausente" is
+# inferred from the ABSENCE of a helmet box, so every missed detection becomes
+# an accusation against a compliant worker. Measured on real CCTV-angle
+# footage (see ml/eval_compliant.py) that produced a 100% false alarm rate.
+# A dedicated `head` class turns the violation into positive evidence: an
+# uncovered head must be SEEN, not merely inferred from silence.
+#
+# The source datasets already carry ~42.7k head / NO-Hardhat boxes and ~4.2k
+# NO-Safety Vest boxes. They were being discarded here.
 TARGET_CLASSES = {
     "helmet": 0,
     "vest": 1,
+    "head": 2,      # head with no helmet on it
+    "no_vest": 3,   # torso with no high-visibility vest
 }
 
-# Common synonyms found in public PPE datasets — all map to one of the two
+# Common synonyms found in public PPE datasets — all map to one of the
 # target classes. Anything else in the source datasets is dropped.
 CLASS_ALIASES: dict[str, str] = {
+    # violations
+    "head": "head",
+    "no_hardhat": "head",
+    "no_hard_hat": "head",
+    "no_helmet": "head",
+    "head_no_helmet": "head",
+    "person_without_helmet": "head",
+    "no_safety_vest": "no_vest",
+    "no_vest": "no_vest",
+    "no_high_vis_vest": "no_vest",
+    # PPE present
     "helmet": "helmet",
     "hard_hat": "helmet",
     "hardhat": "helmet",
@@ -156,10 +181,13 @@ _SUBSTRING_RULES: list[tuple[str, str]] = [
 def map_class(source_name: str) -> str | None:
     """Map raw source class name to one of the target classes.
 
-    1. Try exact alias match (CLASS_ALIASES — handles canonical names).
-    2. Fall back to substring contains-match (handles weird Roboflow names like
+    1. Try exact alias match (CLASS_ALIASES — handles canonical names, and the
+       violation markers 'NO-Hardhat' / 'NO-Safety Vest' / 'head').
+    2. Drop any remaining ``no_*``. Order matters: this MUST run before the
+       substring pass, or 'no_hardhat_v2' would contains-match 'hardhat' and
+       be labelled as a helmet — inverting the label.
+    3. Fall back to substring contains-match (handles weird Roboflow names like
        'vest - v4 2024-05-21 1-54pm' or 'PPE_helmet_v2').
-    Excludes ``no_*`` (negative class markers) so we never map them.
     """
     norm = normalize_name(source_name)
     if norm in CLASS_ALIASES:
@@ -170,6 +198,32 @@ def map_class(source_name: str) -> str | None:
         if token in norm:
             return target
     return None
+
+
+def _to_bbox(coords: list[str]) -> str | None:
+    """Normalise one label's geometry to YOLO detection format 'cx cy w h'.
+
+    Some Roboflow exports ship SEGMENTATION labels — 'class x1 y1 x2 y2 ...' —
+    mixed in with plain boxes. Passed through untouched they become garbage
+    rows that a detection trainer either drops or misreads, silently. Collapse
+    a polygon to its axis-aligned bounding box instead of losing the sample.
+    """
+    if len(coords) == 4:
+        return " ".join(coords)
+    # class + N (x, y) pairs, so an even number of coordinates, at least a triangle.
+    if len(coords) < 6 or len(coords) % 2 != 0:
+        return None
+    try:
+        xs = [float(v) for v in coords[0::2]]
+        ys = [float(v) for v in coords[1::2]]
+    except ValueError:
+        return None
+    x0, x1 = min(xs), max(xs)
+    y0, y1 = min(ys), max(ys)
+    w, h = x1 - x0, y1 - y0
+    if w <= 0 or h <= 0:
+        return None
+    return f"{(x0 + x1) / 2:.6f} {(y0 + y1) / 2:.6f} {w:.6f} {h:.6f}"
 
 
 def _discover_image_label_dirs(source_root: Path) -> list[tuple[Path, Path]]:
@@ -229,7 +283,10 @@ def collect_image_label_pairs(
                 if target_name is None:
                     continue
                 target_idx = TARGET_CLASSES[target_name]
-                remapped.append((target_idx, " ".join(parts[1:])))
+                geom = _to_bbox(parts[1:])
+                if geom is None:
+                    continue
+                remapped.append((target_idx, geom))
             if remapped:
                 pairs.append((img, remapped))
     return pairs

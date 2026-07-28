@@ -329,9 +329,18 @@ SHORT_BARE_HEAD_DET = Detection(
 )
 
 
-def _enable_violation_classes(processor: StreamProcessor) -> None:
-    """Make the mocked detector look like the 4-class weights."""
+def _enable_violation_classes(
+    processor: StreamProcessor, trusted: set[str] | None = None
+) -> None:
+    """Make the mocked detector look like the 4-class weights.
+
+    `trusted` mirrors settings.TRUSTED_VIOLATION_CLASSES resolved to EPI keys:
+    the shipped default trusts the bare-head class only, because sem_colete
+    trains to recall 0.00 and must keep its absence-inference fallback."""
     type(processor._detector).has_violation_classes = PropertyMock(return_value=True)
+    type(processor._detector).trusted_violation_equipment = PropertyMock(
+        return_value={"capacete"} if trusted is None else trusted
+    )
 
 
 class TestPositiveEvidenceViolations:
@@ -468,6 +477,30 @@ class TestPositiveEvidenceAlerts:
             stream_processor.stop()
 
         assert alerts == [], f"absence must not alert on 4-class weights: {alerts}"
+
+    def test_untrusted_violation_class_keeps_its_absence_fallback(  # type: ignore[no-untyped-def]
+        self, stream_processor: StreamProcessor, alert_manager, fast_smoothing: None
+    ) -> None:
+        """The regression this per-class split exists for.
+
+        sem_colete ships in the 4-class weights with recall 0.00. Retiring
+        absence-inference for every class at once would leave vests with no
+        detector AND no fallback, silently ending vest enforcement. Helmet is
+        covered by a trusted bare-head class, vest is not, so a worker wearing
+        a helmet and no vest must still be flagged."""
+        _enable_violation_classes(stream_processor)  # trusts capacete only
+        stream_processor._detector.detect.return_value = [HELMET_DET]  # type: ignore[attr-defined]
+        stream_processor._detector.detect_persons.return_value = [PERSON_BBOX]  # type: ignore[attr-defined]
+
+        stream_processor.set_active_epis(ACTIVE)
+        stream_processor.start()
+        try:
+            _wait_for(alert_manager.get_alerts, "alert for missing vest")
+            alerts = alert_manager.get_alerts()
+        finally:
+            stream_processor.stop()
+
+        assert alerts[0].missing_epis == ["Colete"]
 
     def test_violation_classes_are_not_selectable_epis(
         self, stream_processor: StreamProcessor

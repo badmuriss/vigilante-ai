@@ -129,6 +129,25 @@ class SafetyDetector:
         (bare head / no vest). False for the legacy 2-class weights."""
         return any(k in VIOLATION_OF for k in self._class_map.values())
 
+    @property
+    def trusted_violation_equipment(self) -> set[str]:
+        """EPI keys whose violation the loaded weights are trusted to detect.
+
+        Presence of a class in the weights is not evidence that it works:
+        sem_colete ships in the 4-class model with recall 0.00. Only classes
+        named in settings.TRUSTED_VIOLATION_CLASSES may retire the
+        absence-inference fallback for their equipment."""
+        trusted = {
+            name.strip().lower()
+            for name in settings.TRUSTED_VIOLATION_CLASSES.split(",")
+            if name.strip()
+        }
+        return {
+            VIOLATION_OF[k]
+            for k in self._class_map.values()
+            if k in VIOLATION_OF and k in trusted
+        }
+
     def load_model(self) -> None:
         self._model = YOLO(settings.MODEL_PATH)
         model_classes: dict[int, str] = self._model.names

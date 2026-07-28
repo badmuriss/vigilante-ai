@@ -146,11 +146,27 @@ def _absence_implies_violation(detector: SafetyDetector) -> bool:
     return not bool(getattr(detector, "has_violation_classes", False))
 
 
+def _absence_classes(detector: SafetyDetector, active: set[str]) -> set[str]:
+    """Which EPI keys still fall back to absence-inference, decided per class.
+
+    Coarse on/off would be wrong: the 4-class weights detect a bare head well
+    (recall 0.80) but sem_colete not at all (recall 0.00 on 20 training boxes).
+    Retiring absence-inference for every class at once would leave vests with
+    no detector and no fallback, silently ending vest enforcement."""
+    mode = settings.ABSENCE_IMPLIES_VIOLATION.strip().lower()
+    if mode == "on":
+        return set(active)
+    if mode == "off":
+        return set()
+    covered = getattr(detector, "trusted_violation_equipment", None) or set()
+    return {cls for cls in active if cls not in covered}
+
+
 def _evaluate_person(
     person_bbox: tuple[int, int, int, int],
     ppe_dets: list[Detection],
     active: set[str],
-    absence_implies_violation: bool = True,
+    absence_implies_violation: bool | set[str] = True,
 ) -> tuple["PersonEval", set[str]]:
     """Returns (eval, checkable_classes). Classes not in checkable should be
     treated as undecidable for this person — typically because the body part
@@ -158,8 +174,16 @@ def _evaluate_person(
 
     A violation is preferably established by POSITIVE evidence: a
     cabeca_descoberta / sem_colete box overlapping the matching body zone.
-    Absence-inference ("no helmet box => no helmet") is the fallback and only
-    runs when absence_implies_violation is True."""
+    Absence-inference ("no helmet box => no helmet") is the fallback. Pass True
+    to apply it to every active class, False to none, or the explicit set of
+    classes that still need it (see _absence_classes)."""
+    if absence_implies_violation is True:
+        absence = set(active)
+    elif absence_implies_violation is False:
+        absence = set()
+    else:
+        absence = set(absence_implies_violation)
+
     px1, py1, px2, py2 = person_bbox
     ph = py2 - py1
     head_visible = (
@@ -170,7 +194,7 @@ def _evaluate_person(
     torso_zone = (px1, py1 + int(ph * 0.20), px2, py1 + int(ph * 0.70))
 
     checkable = set(active)
-    if not head_visible and absence_implies_violation:
+    if not head_visible and "capacete" in absence:
         # Guessing from absence needs the head to be plausibly visible.
         # Positive evidence needs no such guard: seeing a bare head IS the
         # proof that the head is visible.
@@ -196,8 +220,7 @@ def _evaluate_person(
             matched.append(d)
 
     missing = set(violated)
-    if absence_implies_violation:
-        missing |= checkable - present
+    missing |= (checkable & absence) - present
     return PersonEval(person_bbox, present, missing, matched, violated), checkable
 
 
@@ -425,7 +448,7 @@ class StreamProcessor:
             ppe_dets = [d for d in detections if d.class_name in ALL_CLASS_LABELS_PT]
 
             now = time.monotonic()
-            absence_ok = _absence_implies_violation(self._detector)
+            absence_ok = _absence_classes(self._detector, active)  # per-class set
 
             # Per-frame raw evaluation per detected person.
             raw_evals: list[PersonEval] = []
@@ -536,7 +559,7 @@ class StreamProcessor:
                         # Contradictory evidence (helmet AND bare head boxes on
                         # the same person) resolves toward the violation.
                         if violation_committed or (
-                            absence_ok
+                            cls in absence_ok
                             and (last_t is None or (now - last_t) >= SMOOTHING_TO_MISSING_S)
                         ):
                             cstatus[cls] = "missing"
@@ -549,7 +572,9 @@ class StreamProcessor:
                         #     absence mode, TO_MISSING_S without any sighting)
                         #   * "present" earns its way in with TO_PRESENT_S of streak
                         if violation_committed or (
-                            absence_ok and last_t is None and age >= SMOOTHING_TO_MISSING_S
+                            cls in absence_ok
+                            and last_t is None
+                            and age >= SMOOTHING_TO_MISSING_S
                         ):
                             cstatus[cls] = "missing"
                         elif present_committed:

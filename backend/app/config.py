@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     #   "on"             — legacy behaviour, absence always alerts.
     #   "off"            — never alert on absence alone, even on old weights.
     ABSENCE_IMPLIES_VIOLATION: str = "auto"
+    # Which violation classes are good enough to REPLACE absence-inference,
+    # decided per class because they do not train equally well. Measured on the
+    # merged4 test split: cabeca_descoberta reaches recall 0.80, while
+    # sem_colete reaches 0.00 on 20 training boxes. Trusting sem_colete would
+    # switch off absence-inference for vests and detect nothing in its place,
+    # silently ending vest enforcement. Add it back once its recall is real.
+    TRUSTED_VIOLATION_CLASSES: str = "cabeca_descoberta"
     MODEL_INPUT_SIZE: int = 960
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     HOST: str = "0.0.0.0"

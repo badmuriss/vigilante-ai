@@ -1,10 +1,17 @@
-<p align="center"><img src="docs/banner.png" width="720" alt="Vigilante.AI em letras claras sobre fundo grafite escuro, com o .AI em amarelo de segurança e a tagline: monitoramento de EPI em tempo real com visão computacional"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-white.png">
+    <img src="assets/logo-black.png" width="140" alt="Logo do Vigilante.AI: escudo com obturador de câmera e detalhe laranja">
+  </picture>
+</p>
+
+<h1 align="center">Vigilante.AI</h1>
 
 <p align="center"><b>Monitoramento em tempo real de uso de EPI em canteiros de obra e ambientes industriais.</b></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/licen%C3%A7a-propriet%C3%A1ria-lightgrey?style=flat-square" alt="licença proprietária">
-  <a href="https://huggingface.co/badmuriss/ppe-detection-yolov8s"><img src="https://img.shields.io/badge/modelo-ppe--detection--yolov8s-yellow?style=flat-square" alt="modelo no Hugging Face"></a>
+  <a href="https://huggingface.co/badmuriss/ppe-detection-yolov8s"><img src="https://img.shields.io/badge/modelo-ppe--detection--yolov8s-orange?style=flat-square" alt="modelo no Hugging Face"></a>
   <a href="https://github.com/badmuriss/vigilante-ai/stargazers"><img src="https://img.shields.io/github/stars/badmuriss/vigilante-ai?style=flat-square" alt="GitHub stars"></a>
   <a href="https://github.com/badmuriss/vigilante-ai/commits/main"><img src="https://img.shields.io/github/last-commit/badmuriss/vigilante-ai?style=flat-square" alt="último commit"></a>
 </p>

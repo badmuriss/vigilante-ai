@@ -1,6 +1,34 @@
-# Vigilante.AI
+<p align="center"><img src="docs/banner.png" width="720" alt="Vigilante.AI em letras claras sobre fundo grafite escuro, com o .AI em amarelo de segurança e a tagline: monitoramento de EPI em tempo real com visão computacional"></p>
 
-Monitoramento em tempo real de uso de EPI em canteiros de obra e ambientes industriais.
+<p align="center"><b>Monitoramento em tempo real de uso de EPI em canteiros de obra e ambientes industriais.</b></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/licen%C3%A7a-propriet%C3%A1ria-lightgrey?style=flat-square" alt="licença proprietária">
+  <a href="https://huggingface.co/badmuriss/ppe-detection-yolov8s"><img src="https://img.shields.io/badge/modelo-ppe--detection--yolov8s-yellow?style=flat-square" alt="modelo no Hugging Face"></a>
+  <a href="https://github.com/badmuriss/vigilante-ai/stargazers"><img src="https://img.shields.io/github/stars/badmuriss/vigilante-ai?style=flat-square" alt="GitHub stars"></a>
+  <a href="https://github.com/badmuriss/vigilante-ai/commits/main"><img src="https://img.shields.io/github/last-commit/badmuriss/vigilante-ai?style=flat-square" alt="último commit"></a>
+</p>
+
+<p align="center">
+  <a href="#arquitetura">Arquitetura</a> ·
+  <a href="#como-contribuir--rodar-localmente-docker">Rodar localmente</a> ·
+  <a href="#api-resumida">API</a> ·
+  <a href="#modelo-hugging-face">Modelo</a> ·
+  <a href="#stack">Stack</a>
+</p>
+
+## Subir o stack completo
+
+```bash
+git clone https://github.com/badmuriss/vigilante-ai.git
+cd vigilante-ai
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000
+- API docs: http://localhost:8000/docs
+- Métricas Prometheus: http://localhost:8000/metrics
+
 Detecta capacete, colete e ausência de equipamento de proteção em qualquer stream RTSP
 ou webcam local, expõe violações em um painel multi-tenant e realimenta alertas
 revisados em um loop de retreinamento.
@@ -50,19 +78,7 @@ O plano executivo até a apresentação final de outubro de 2026 está em
 cobre nuvem, câmeras reais de canteiro, melhoria contínua do modelo, métricas,
 segurança/LGPD e preparação da demonstração final.
 
-### 1. Subir o stack completo
-
-```bash
-git clone https://github.com/badmuriss/vigilante-ai.git
-cd vigilante-ai
-docker compose up --build
-```
-
-- Frontend: http://localhost:3000
-- API docs: http://localhost:8000/docs
-- Métricas Prometheus: http://localhost:8000/metrics
-
-### 2. Subir com simulador RTSP (recomendado para desenvolvimento)
+### 1. Subir com simulador RTSP (recomendado para desenvolvimento)
 
 Sem câmeras IP reais à mão? Solta vídeos `.mp4` em `media/` e o profile `rtsp` expõe cada um como stream RTSP via mediamtx + ffmpeg-loop.
 
@@ -76,7 +92,7 @@ Depois cadastra a câmera em http://localhost:3000/cameras com:
 
 Detalhes em [`media/README.md`](./media/README.md).
 
-### 3. Primeiro acesso
+### 2. Primeiro acesso
 
 1. Abre http://localhost:3000/login
 2. Em desenvolvimento, clica em "Registrar" e cria o primeiro usuário (vira admin do tenant)
@@ -87,7 +103,7 @@ Em produção/piloto real, o cadastro aberto deve ficar desabilitado. O onboardi
 é feito por painel admin: criar tenant/empresa, usuários, papéis, canteiros,
 câmeras e integrações.
 
-### 4. Rebuildar após alterações
+### 3. Rebuildar após alterações
 
 ```bash
 docker compose up --build backend       # só backend
@@ -95,7 +111,7 @@ docker compose up --build frontend      # só frontend
 docker compose restart ffmpeg-loop      # após adicionar vídeos em media/
 ```
 
-### 5. Volumes persistentes
+### 4. Volumes persistentes
 
 - `postgres_data` — banco de dados (sobrevive a `docker compose down`)
 - `./backend/data/alerts` — frames de alertas (bind mount, dá pra inspecionar)

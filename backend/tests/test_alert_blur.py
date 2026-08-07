@@ -160,3 +160,47 @@ def test_face_band_stays_valid_on_a_tiny_person() -> None:
 
     band = _face_band((10, 10, 20, 12))
     assert band[3] > band[1], "never collapses to zero height"
+
+
+def test_crop_zooms_on_the_offender() -> None:
+    """The reviewer decides on a phone; a wide frame buries the violation."""
+    from app.services.alert_service import _crop_to_focus
+
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    crop = _crop_to_focus(frame, (600, 300, 700, 500))
+
+    assert crop.shape[1] < frame.shape[1], "narrower than the source"
+    assert crop.shape[0] < frame.shape[0], "shorter than the source"
+
+
+def test_crop_still_zooms_on_a_full_height_standing_worker() -> None:
+    """The regression this rewrite exists for.
+
+    A standing worker fills most of a landscape frame's height. Preserving the
+    source aspect meant the crop had to be wider than the frame itself, so it
+    always bailed out and the alert image never zoomed.
+    """
+    from app.services.alert_service import _crop_to_focus
+
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    crop = _crop_to_focus(frame, (495, 150, 790, 715))
+
+    assert crop.shape[1] < frame.shape[1] * 0.8, "must actually crop sideways"
+
+
+def test_crop_is_a_no_op_without_a_box_or_on_a_close_up() -> None:
+    from app.services.alert_service import _crop_to_focus
+
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    assert _crop_to_focus(frame, None).shape == frame.shape
+    # Box already fills the frame: cropping tighter would look broken.
+    assert _crop_to_focus(frame, (0, 0, 1280, 720)).shape == frame.shape
+
+
+def test_crop_survives_a_degenerate_or_out_of_bounds_box() -> None:
+    from app.services.alert_service import _crop_to_focus
+
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+    assert _crop_to_focus(frame, (500, 500, 500, 500)).shape == frame.shape
+    out = _crop_to_focus(frame, (-50, -50, 200, 300))
+    assert out.size > 0

@@ -25,8 +25,8 @@ Repositório: `/home/badmuriss/Documents/vigilante-ai`. Executar na ordem, as ta
 
 **Contexto:** 35 mudanças estão fora do git desde 28/05, concentradas na camada de canal do WhatsApp. Entre elas, dois arquivos **untracked** que são essenciais: a migração `backend/migrations/versions/0005_whatsapp_operators.py` e o teste `backend/tests/test_whatsapp_webhook.py`. Sem commit, a maior evolução do projeto não existe para o avaliador.
 
-- [ ] Rodar `git status --short` e conferir as 35 entradas.
-- [ ] Commitar em grupos temáticos, mensagens em conventional commits, sem mencionar ferramenta de IA:
+- [x] Rodar `git status --short` e conferir as 35 entradas.
+- [x] Commitar em grupos temáticos, mensagens em conventional commits, sem mencionar ferramenta de IA:
   - `feat(whatsapp): resolve tenant by operator phone on shared platform number` → `backend/app/webhooks/whatsapp.py`, `backend/app/db/entities.py`, `backend/app/repositories.py`, `backend/migrations/versions/0005_whatsapp_operators.py`, `backend/app/config.py`
   - `feat(whatsapp): push alert review with decision buttons` → `backend/app/services/whatsapp_notifier.py`, `backend/app/services/alert_service.py`, `backend/app/registry.py`
   - `feat(notifications): rework whatsapp operator config api and ui` → `backend/app/notifications/router.py`, `backend/app/notifications/schemas.py`, `frontend/src/components/WhatsAppNotificationsCard.tsx`, `frontend/src/lib/api.ts`, `frontend/src/types/index.ts`
@@ -34,8 +34,8 @@ Repositório: `/home/badmuriss/Documents/vigilante-ai`. Executar na ordem, as ta
   - `test(whatsapp): cover webhook, notifier and notifications router` → `backend/tests/*`
   - `chore: update compose, env example and docs` → `docker-compose.yml`, `.env.example`, `README.md`, `frontend/next.config.mjs`, `frontend/src/lib/useLiveFrame.ts`, `descricao.txt`, `backend/app/main.py`
   - Remoção do `NEXT_STEPS.md` entra no commit de chore.
-- [ ] Decidir sobre `.claude-plugin/` e `harness.toml`: ou entram em `chore(tooling)`, ou vão para `.gitignore`. Não deixar untracked.
-- [ ] `git push`.
+- [x] Decidir sobre `.claude-plugin/` e `harness.toml`: ou entram em `chore(tooling)`, ou vão para `.gitignore`. Não deixar untracked.
+- [x] `git push`.
 
 **Critério de pronto (verificável):** `git status --short` retorna vazio, e `git log --oneline -8` mostra os commits acima.
 
@@ -72,7 +72,7 @@ Repositório: `/home/badmuriss/Documents/vigilante-ai`. Executar na ordem, as ta
 
 ## 4. Manifestos k3s e subir o cluster
 
-> Manifestos e runbook: PRONTOS. Instalação do cluster: pendente, é ação do dono da máquina (mexe em systemd/containerd e exige sudo). Runbook em `k8s/README.md`.
+> CONCLUÍDA 26/07. Cluster no ar com `--docker --write-kubeconfig-mode 644`, domínio respondendo 200, quatro provas de rollout verdes. O que quebrou no caminho está na seção 8 de `docs/kubernetes-k3s.md`.
 
 **Contexto:** `docs/kubernetes-k3s.md` traz os YAML de namespace, ConfigMap, StatefulSet do Postgres, Deployment do backend com as três probes, Deployment do frontend e Ingress. Copiar de lá e ajustar. Dois desvios decididos em `design.md`: mediamtx entra no cluster como ClusterIP com RTSP sobre TCP (sem NodePort, sem UDP), e não há GPU.
 
@@ -80,8 +80,8 @@ Repositório: `/home/badmuriss/Documents/vigilante-ai`. Executar na ordem, as ta
 - [x] Backend com `startupProbe` (`failureThreshold: 30`, `periodSeconds: 5`) apontando para `/healthz`, mais `livenessProbe` em `/healthz` e `readinessProbe` em `/readyz`. Sem startupProbe o liveness mata o pod durante o carregamento do YOLO.
 - [x] `replicas: 1` no backend, com comentário explicando que `StreamSource` por câmera vive na memória do processo. Frontend com `replicas: 2`.
 - [x] Segredos por `kubectl create secret`, nunca em arquivo versionado. Incluir `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, chave da OpenAI, token do HF e o token do cloudflared.
-- [ ] Instalar k3s, importar as imagens no containerd (`docker save ... | sudo k3s ctr images import -`), aplicar `kubectl apply -f k8s/`.
-- [ ] Exercitar o cluster: `kubectl -n vigilante delete pod -l app=backend`, `scale deploy/frontend --replicas=3`, `rollout restart deploy/backend`, `rollout undo deploy/backend`. Anotar no fim de `docs/kubernetes-k3s.md` o que quebrou e por quê.
+- [x] Instalar k3s, importar as imagens no containerd (`docker save ... | sudo k3s ctr images import -`), aplicar `kubectl apply -f k8s/`.
+- [x] Exercitar o cluster: `kubectl -n vigilante delete pod -l app=backend`, `scale deploy/frontend --replicas=3`, `rollout restart deploy/backend`, `rollout undo deploy/backend`. Anotar no fim de `docs/kubernetes-k3s.md` o que quebrou e por quê.
 
 **Critério de pronto (verificável):** `kubectl -n vigilante get pods` mostra todos `Running` e `READY 1/1` (frontend 2/2), e `curl -s -o /dev/null -w '%{http_code}' https://vigilanteai.outis.com.br/api/webhooks/whatsapp` retorna algo diferente de `502`.
 
@@ -89,12 +89,13 @@ Repositório: `/home/badmuriss/Documents/vigilante-ai`. Executar na ordem, as ta
 
 ## 5. Capturar os assets de WhatsApp
 
+> Atualização 26/07: o dono já tem 2 dos prints (alerta com blur e revisão aplicada). Falta só o de áudio, que fica como placeholder no deck até ele rodar o WhatsApp. O print de outra empresa (`wa_tenant_b`) foi **cortado por decisão dele**, junto com o passo correspondente da demo.
+
 **Contexto:** os cinco screenshots dos slides da Atividade 2 (`docs/enterprise-challenge-claro/assets-hub/`) são todos de tela web. Nenhum de celular. Esse é o buraco visual que a Atividade 3 precisa fechar.
 
 - [ ] Criar `docs/enterprise-challenge-claro/assets-a3/` e capturar:
   - `wa_alert_blur.png`: alerta no WhatsApp com rosto borrado e os dois botões de decisão
   - `wa_review_applied.png`: painel com o alerta já revisado depois do toque
-  - `wa_tenant_b.png`: mesmo número atendendo operador de outra empresa
   - `wa_audio.png`: mensagem de voz e a resposta do agente
   - `panel_chart.png`: painel com gráfico (pode reusar `assets-hub/chat_chart_line.png`)
 
@@ -103,6 +104,8 @@ Repositório: `/home/badmuriss/Documents/vigilante-ai`. Executar na ordem, as ta
 ---
 
 ## 6. Criar `slides-atividade3.html`
+
+> Atualização 26/07, depois de review do dono ("muito poluído, não sei para onde olhar"): o deck foi de 9 para **8 slides**. Os antigos 3 e 4 (identidade e evolução de arquitetura) fundiram num só, porque gastavam duas telas com a mesma mudança. Regras de densidade aplicadas em todos: no máximo 1 título + 1 zona visual, grid de no máximo 3 itens, texto de card em 1 linha, faixas `.cross` e painéis laterais redundantes eliminados, rodapés longos removidos. O roteiro foi realinhado e passou por `/unslop`.
 
 **Onde:** `docs/enterprise-challenge-claro/slides-atividade3.html`.
 
@@ -143,7 +146,7 @@ cd docs/enterprise-challenge-claro && grep -o 'src="[^"]*"' slides-atividade3.ht
 
 ## 8. Gravar, publicar e fechar o PDF
 
-- [ ] Antes de gravar: subir o stack, conferir que o webhook da Meta aponta para a URL viva, e confirmar que o template do WhatsApp com botões está **aprovado** na Meta. Sem template aprovado o push com botões não sai.
+- [ ] Antes de gravar: subir o stack e conferir que o webhook da Meta aponta para a URL viva. Template com botões: **já aprovado na Meta**, confirmado pelo dono em 26/07.
 - [ ] Gravar um take isolado só do fluxo WhatsApp e guardar como plano B.
 - [ ] Gravar o pitch completo. Alvo 5:00, com 150s de demonstração. Nada de código na tela.
 - [ ] Publicar no YouTube como **não listado**.

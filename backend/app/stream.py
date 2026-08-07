@@ -564,7 +564,9 @@ class StreamProcessor:
             # the same smoothed status so they cannot disagree with the
             # outer person bbox color.
             person_evals: list[PersonEval] = []
-            triggered_alerts: list[tuple[set[str], list[Detection]]] = []
+            triggered_alerts: list[
+                tuple[set[str], list[Detection], tuple[int, int, int, int]]
+            ] = []
             for tr in self._tracks:
                 age = now - tr["first_seen"]
                 cstatus: dict[str, str] = tr.setdefault("class_status", {})
@@ -638,7 +640,13 @@ class StreamProcessor:
                 is_compliant_now = not missing
                 was_compliant = tr.get("was_compliant", True)
                 if was_compliant and not is_compliant_now:
-                    triggered_alerts.append((set(missing), list(smoothed_matched)))
+                    # Carry the offender's box so the review image can be
+                    # cropped to them: on a wide frame the violation is a
+                    # few percent of the pixels, and the reviewer is
+                    # deciding on a phone.
+                    triggered_alerts.append(
+                        (set(missing), list(smoothed_matched), tuple(tr["bbox"]))
+                    )
                 tr["was_compliant"] = is_compliant_now
 
             scene_missing: set[str] = set()
@@ -657,7 +665,7 @@ class StreamProcessor:
                 frame, person_evals, ppe_dets, visible_faces
             )
 
-            for miss_set, matched_dets in triggered_alerts:
+            for miss_set, matched_dets, offender_bbox in triggered_alerts:
                 missing_labels = sorted(EPI_LABELS_PT.get(k, k) for k in miss_set)
                 labels = ", ".join(missing_labels)
                 rep_conf = max(
@@ -692,6 +700,7 @@ class StreamProcessor:
                         [d.bbox for d in visible_faces]
                         + [_face_band(ev.bbox) for ev in person_evals]
                     ),
+                    focus_bbox=offender_bbox,
                 )
                 self._last_alert_at = now
             self._last_missing_set = frozenset(scene_missing)

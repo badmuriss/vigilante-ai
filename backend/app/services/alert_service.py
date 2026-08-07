@@ -58,6 +58,7 @@ class AlertService:
         raw_frame: NDArray[np.uint8] | None = None,
         detected_bboxes: list[dict[str, Any]] | None = None,
         face_bboxes: list[tuple[int, int, int, int]] | None = None,
+        focus_bbox: tuple[int, int, int, int] | None = None,
     ) -> dict[str, Any] | None:
         if self._is_on_cooldown(violation_type):
             return None
@@ -86,6 +87,13 @@ class AlertService:
         # Every alert passes through here, so panel and WhatsApp are covered at
         # once and no future caller can leak an unblurred face by omission.
         review_frame = _blur_faces(frame, face_bboxes)
+        # Crop to the offender, for BOTH the thumbnail and the full artefact.
+        # On a wide frame the violation is a few percent of the pixels and the
+        # reviewer is deciding on a phone. Blur runs first, so the crop
+        # inherits it and cannot expose a face the crop happens to include.
+        # The raw artefact below stays uncropped: retraining wants the whole
+        # scene, including the background the detector has to reject.
+        review_frame = _crop_to_focus(review_frame, focus_bbox)
         thumb_jpeg = _encode_jpeg(review_frame, width=160, quality=quality)
         # Annotated frame at native resolution for high-quality admin review.
         full_jpeg = _encode_jpeg(review_frame, width=None, quality=quality)
@@ -214,6 +222,51 @@ class AlertService:
         if last is None:
             return False
         return datetime.utcnow() - last < timedelta(seconds=settings.ALERT_COOLDOWN_SECONDS)
+
+
+# How much of the offender's own size to keep around them, so the crop reads as
+# a scene and not a mugshot. 0.6 => 60% of the box width added on each side.
+FOCUS_PAD_RATIO = 0.6
+# Never return a crop narrower than this fraction of the frame: on a close-up
+# the box already fills most of the image and a tight crop just looks broken.
+FOCUS_MIN_FRAME_RATIO = 0.35
+
+
+def _crop_to_focus(
+    frame: NDArray[np.uint8], bbox: tuple[int, int, int, int] | None
+) -> NDArray[np.uint8]:
+    """Crop around `bbox` with padding, so the review image shows the violation.
+
+    Aspect is deliberately NOT preserved. A standing worker fills most of a
+    landscape frame's height, so an aspect-correct crop containing them would
+    have to be wider than the frame itself — the crop would always bail out and
+    nothing would ever zoom. Cropping to the subject yields a portrait image,
+    which is the better shape for the phone the reviewer is holding anyway.
+
+    Returns the frame untouched when there is no box or the box is degenerate.
+    """
+    if bbox is None:
+        return frame
+    height, width = frame.shape[:2]
+    x1, y1, x2, y2 = (int(v) for v in bbox)
+    x1, x2 = sorted((max(0, x1), min(width, x2)))
+    y1, y2 = sorted((max(0, y1), min(height, y2)))
+    bw, bh = x2 - x1, y2 - y1
+    if bw <= 0 or bh <= 0:
+        return frame
+
+    want_w = min(width, max(bw * (1 + 2 * FOCUS_PAD_RATIO),
+                            width * FOCUS_MIN_FRAME_RATIO))
+    want_h = min(height, bh * (1 + 2 * FOCUS_PAD_RATIO))
+    # Nothing to gain if the padded box already spans the frame both ways.
+    if want_w >= width and want_h >= height:
+        return frame
+
+    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    left = int(max(0, min(width - want_w, cx - want_w / 2)))
+    top = int(max(0, min(height - want_h, cy - want_h / 2)))
+    crop = frame[top:top + int(want_h), left:left + int(want_w)]
+    return crop if crop.size else frame
 
 
 def _blur_faces(

@@ -56,12 +56,13 @@ class AlertManager:
         raw_frame: NDArray[np.uint8] | None = None,
         detected_bboxes: list[dict[str, Any]] | None = None,
         face_bboxes: list[tuple[int, int, int, int]] | None = None,
+        focus_bbox: tuple[int, int, int, int] | None = None,
     ) -> Alert | None:
         # raw_frame + detected_bboxes + face_bboxes accepted for protocol
         # parity with AlertService but ignored here — the legacy in-memory
         # manager has no persisted artefacts to anonymise and no need for
         # retraining payloads.
-        del raw_frame, detected_bboxes, face_bboxes
+        del raw_frame, detected_bboxes, face_bboxes, focus_bbox
         if self._is_on_cooldown(violation_type):
             return None
 

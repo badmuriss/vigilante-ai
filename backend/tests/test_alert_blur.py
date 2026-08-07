@@ -104,3 +104,33 @@ def test_small_box_still_blurs_with_valid_odd_kernel() -> None:
     frame = _frame()
     out = _blur_faces(frame, [(58, 58, 62, 62)])
     assert not np.array_equal(out, frame)
+
+
+def test_head_zone_is_the_top_slice_of_the_person_box() -> None:
+    """Anonymisation must not depend on the frontal face cascade.
+
+    Measured on real alert frames it returned 0 faces at every minSize, so an
+    alert relying on it ships an unblurred worker. The head zone is derived
+    from the person box instead, and is the same geometry the helmet
+    association uses so the two cannot drift.
+    """
+    from app.stream import HEAD_ZONE_FRACTION, _head_zone
+
+    x1, y1, x2, y2 = 100, 200, 180, 500  # 300px tall person
+    zone = _head_zone((x1, y1, x2, y2))
+
+    assert zone[0] == x1 and zone[2] == x2, "full width of the person"
+    assert zone[1] == y1, "starts at the top of the person"
+    assert zone[3] == y1 + int(300 * HEAD_ZONE_FRACTION)
+    assert zone[3] < y2, "never covers the whole body"
+
+
+def test_head_zone_survives_a_degenerate_person_box() -> None:
+    zone = _head_zone_import()((10, 10, 12, 10))  # zero height
+    assert zone[3] > zone[1], "must stay a non-empty box, never zero height"
+
+
+def _head_zone_import():
+    from app.stream import _head_zone
+
+    return _head_zone

@@ -55,6 +55,10 @@ HEAD_VISIBLE_MIN_PERSON_HEIGHT_PX = 80
 # small and partial overlap (e.g. helmet edge inside head zone) is normal.
 PPE_PERSON_MIN_OVERLAP = 0.10
 
+# Fraction of a person's height treated as the head. Used both to decide
+# whether a helmet belongs to that person and to anonymise the review image.
+HEAD_ZONE_FRACTION = 0.30
+
 # Per-track tuning
 TRACK_IOU_THRESHOLD = 0.30
 TRACK_STALE_S = 1.5
@@ -120,6 +124,16 @@ def _bbox_overlap_ratio(
         return 0.0
     inner_area = max(1, (ix2 - ix1) * (iy2 - iy1))
     return inter / inner_area
+
+
+def _head_zone(person_bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """Top slice of a person box: where a helmet sits, and where a face is.
+
+    Shared by the helmet-association check and by anonymisation so the two can
+    never drift apart."""
+    px1, py1, px2, py2 = person_bbox
+    ph = py2 - py1
+    return (px1, py1, px2, py1 + max(1, int(ph * HEAD_ZONE_FRACTION)))
 
 
 def _bump_streak(tr: dict, last_key: str, start_key: str, cls: str, now: float) -> None:
@@ -190,7 +204,7 @@ def _evaluate_person(
         py1 > HEAD_VISIBLE_TOP_MARGIN_PX
         and ph >= HEAD_VISIBLE_MIN_PERSON_HEIGHT_PX
     )
-    head_zone = (px1, py1, px2, py1 + max(1, int(ph * 0.30)))
+    head_zone = _head_zone(person_bbox)
     torso_zone = (px1, py1 + int(ph * 0.20), px2, py1 + int(ph * 0.70))
 
     checkable = set(active)
@@ -644,7 +658,17 @@ class StreamProcessor:
                     missing_epis=missing_labels,
                     raw_frame=frame,
                     detected_bboxes=bbox_records,
-                    face_bboxes=[d.bbox for d in visible_faces],
+                    # Anonymise by the head zone of every detected person, not
+                    # only by detected faces. The Haar cascade is frontal-only:
+                    # measured on real alert frames it found 0 faces at every
+                    # minSize, because workers are seen from the side or above
+                    # with the hard hat shading the face. Relying on it means
+                    # shipping an unblurred face. Over-blurring is harmless;
+                    # under-blurring is a privacy leak.
+                    face_bboxes=(
+                        [d.bbox for d in visible_faces]
+                        + [_head_zone(ev.bbox) for ev in person_evals]
+                    ),
                 )
                 self._last_alert_at = now
             self._last_missing_set = frozenset(scene_missing)

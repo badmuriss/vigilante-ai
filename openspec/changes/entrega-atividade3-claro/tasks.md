@@ -93,11 +93,17 @@ Repositório: `/home/badmuriss/Documents/vigilante-ai`. Executar na ordem, as ta
 
 **Contexto:** os cinco screenshots dos slides da Atividade 2 (`docs/enterprise-challenge-claro/assets-hub/`) são todos de tela web. Nenhum de celular. Esse é o buraco visual que a Atividade 3 precisa fechar.
 
-- [ ] Criar `docs/enterprise-challenge-claro/assets-a3/` e capturar:
-  - `wa_alert_blur.png`: alerta no WhatsApp com rosto borrado e os dois botões de decisão
-  - `wa_review_applied.png`: painel com o alerta já revisado depois do toque
-  - `wa_audio.png`: mensagem de voz e a resposta do agente
-  - `panel_chart.png`: painel com gráfico (pode reusar `assets-hub/chat_chart_line.png`)
+- [x] Criar `docs/enterprise-challenge-claro/assets-a3/` e capturar. FEITO em 07/08,
+      tudo da mesma execução real na câmera Canteiro 2:
+  - `wa_alert_blur.jpg`: alerta no WhatsApp, rosto borrado, os dois botões
+  - `wa_review_confirmed.jpg`: o toque em Confirmar Infração e a resposta do sistema
+  - `panel_historico.png`: histórico com tudo decidido e **0 aguardando revisão**
+  - `panel_assistente.png`: assistente respondendo ao gestor com gráfico
+  - `alerta_zoom.jpg`: o recorte cru do alerta, para uso no vídeo
+
+O print de áudio (`wa_audio.png`) ficou de fora do deck: o passo existe e vai ao ar
+na demonstração gravada, mas exigia o dono mandar um áudio, e um placeholder
+tracejado no PDF entregue custa mais do que o passo vale numa página estática.
 
 **Critério de pronto (verificável):** `ls docs/enterprise-challenge-claro/assets-a3/ | wc -l` retorna 5 ou mais.
 

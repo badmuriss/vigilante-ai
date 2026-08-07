@@ -59,6 +59,15 @@ PPE_PERSON_MIN_OVERLAP = 0.10
 # whether a helmet belongs to that person and to anonymise the review image.
 HEAD_ZONE_FRACTION = 0.30
 
+# Where the face sits INSIDE the head zone, as fractions of that zone.
+# Anonymisation and evidence pull in opposite directions: the helmet sits on
+# the crown, the face just below it, and blurring the whole zone hides the very
+# thing the reviewer has to judge. The zone is 30% of a person's height, which
+# reaches the chest, so the band must also STOP — an open-ended band blurred
+# the torso and left the face exposed above it.
+FACE_BAND_START = 0.12
+FACE_BAND_END = 0.55
+
 # Per-track tuning
 TRACK_IOU_THRESHOLD = 0.30
 TRACK_STALE_S = 1.5
@@ -134,6 +143,20 @@ def _head_zone(person_bbox: tuple[int, int, int, int]) -> tuple[int, int, int, i
     px1, py1, px2, py2 = person_bbox
     ph = py2 - py1
     return (px1, py1, px2, py1 + max(1, int(ph * HEAD_ZONE_FRACTION)))
+
+
+def _face_band(person_bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """The part of the head zone to anonymise: below the helmet, above the neck.
+
+    Blurring the whole head zone also blurs the hard hat, which is the evidence
+    the alert exists to show. Starting at FACE_BAND_START keeps the crown and
+    brim sharp while covering the face."""
+    x1, y1, x2, y2 = _head_zone(person_bbox)
+    zone_h = y2 - y1
+    top = y1 + int(zone_h * FACE_BAND_START)
+    bottom = y1 + int(zone_h * FACE_BAND_END)
+    top = min(top, y2 - 1)
+    return (x1, top, x2, max(bottom, top + 1))
 
 
 def _bump_streak(tr: dict, last_key: str, start_key: str, cls: str, now: float) -> None:
@@ -667,7 +690,7 @@ class StreamProcessor:
                     # under-blurring is a privacy leak.
                     face_bboxes=(
                         [d.bbox for d in visible_faces]
-                        + [_head_zone(ev.bbox) for ev in person_evals]
+                        + [_face_band(ev.bbox) for ev in person_evals]
                     ),
                 )
                 self._last_alert_at = now

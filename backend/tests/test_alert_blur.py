@@ -134,3 +134,29 @@ def _head_zone_import():
     from app.stream import _head_zone
 
     return _head_zone
+
+
+def test_face_band_starts_below_the_helmet() -> None:
+    """Anonymisation must not erase the evidence.
+
+    The hard hat sits on the crown, inside the head zone. Blurring the whole
+    zone hides the very thing the reviewer has to judge, so the blur band
+    starts below it.
+    """
+    from app.stream import _face_band, _head_zone
+
+    person = (100, 200, 180, 500)
+    zone = _head_zone(person)
+    band = _face_band(person)
+
+    assert band[1] > zone[1], "crown stays sharp"
+    assert band[3] < zone[3], "band stops before the chest, so the vest stays visible"
+    assert band[0] == zone[0] and band[2] == zone[2], "full width"
+    assert band[1] < band[3], "non-empty"
+
+
+def test_face_band_stays_valid_on_a_tiny_person() -> None:
+    from app.stream import _face_band
+
+    band = _face_band((10, 10, 20, 12))
+    assert band[3] > band[1], "never collapses to zero height"

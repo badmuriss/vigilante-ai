@@ -156,7 +156,10 @@ cd docs/enterprise-challenge-claro && grep -o 'src="[^"]*"' slides-atividade3.ht
 - [ ] Gravar um take isolado só do fluxo WhatsApp e guardar como plano B.
 - [ ] Gravar o pitch completo. Alvo 5:00, com 150s de demonstração. Nada de código na tela.
 - [ ] Publicar no YouTube como **não listado**.
-- [ ] Colar o link do YouTube no slide 1 de `slides-atividade3.html` e no arquivo `docs/enterprise-challenge-claro/link-video-pendente.txt`.
-- [x] Exportar os slides para PDF (print do navegador, 1920x1080, sem margem). FEITO: `slides-atividade3.pdf`, 9 páginas, 1440x810pt, via `google-chrome --headless=new --print-to-pdf`.
+- [ ] Colar o link do YouTube em `docs/enterprise-challenge-claro/link-video-pendente.txt` e entregar
+      esse link junto do PDF. Decisão do dono em 07/08: o card do vídeo saiu do slide 1,
+      porque o link só existe depois da gravação e o deck não vai ser reaberto para recebê-lo.
+      Placeholder impresso no PDF pesa mais contra do que a ausência do card.
+- [x] Exportar os slides para PDF (print do navegador, 1920x1080, sem margem). FEITO: `slides-atividade3.pdf`, 8 páginas, 1440x810pt, via `google-chrome --headless=new --print-to-pdf`.
 
-**Critério de pronto (verificável):** existe `docs/enterprise-challenge-claro/slides-atividade3.pdf` com 9 páginas, e `grep -c "youtube" docs/enterprise-challenge-claro/slides-atividade3.html` retorna 1 ou mais.
+**Critério de pronto (verificável):** existe `docs/enterprise-challenge-claro/slides-atividade3.pdf` com 8 páginas, e o link do GitHub sai como anotação clicável (`grep -c "/URI" ...` maior que zero).

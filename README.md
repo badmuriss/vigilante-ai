@@ -40,7 +40,7 @@ Detecta capacete, colete e ausência de equipamento de proteção em qualquer st
 ou webcam local, expõe violações em um painel multi-tenant e realimenta alertas
 revisados em um loop de retreinamento.
 
-**Modelo treinado**: [`badmuriss/ppe-detection-yolov8s`](https://huggingface.co/badmuriss/ppe-detection-yolov8s) no Hugging Face — YOLOv8s fine-tunado especificamente para o Vigilante.AI sobre 6 datasets PPE públicos consolidados, com mAP@0.5 = 0.944.
+**Modelo experimental**: [`badmuriss/ppe-detection-yolov8s`](https://huggingface.co/badmuriss/ppe-detection-yolov8s) no Hugging Face. O checkpoint marcou mAP@0.5 = 0,944 em uma divisão com frames semelhantes entre treino e validação, portanto esse número não demonstra desempenho em canteiro. Na amostra de CCTV real disponível, a versão anterior teve 4% de cobertura e 100% de falsos alarmes de capacete. O plano de correção e os critérios de aceite estão em [`ml/TRAINING_PLAN.md`](./ml/TRAINING_PLAN.md).
 
 ## Arquitetura
 
@@ -81,7 +81,7 @@ revisados em um loop de retreinamento.
 ## Roadmap do TCC
 
 O plano executivo até a apresentação final de outubro de 2026 está em
-[`docs/roadmap-tcc-outubro-2026.md`](./docs/roadmap-tcc-outubro-2026.md). Ele
+[`docs/03-operacao-e-infra/roadmap-tcc-outubro-2026.md`](./docs/03-operacao-e-infra/roadmap-tcc-outubro-2026.md). Ele
 cobre nuvem, câmeras reais de canteiro, melhoria contínua do modelo, métricas,
 segurança/LGPD e preparação da demonstração final.
 
@@ -314,19 +314,21 @@ pare se o dono perder acesso.
 
 ## Modelo (Hugging Face)
 
-O detector YOLOv8s usado em produção foi treinado do zero para este projeto e está publicado
+O detector YOLOv8s experimental foi treinado para este projeto e está publicado
 em [huggingface.co/badmuriss/ppe-detection-yolov8s](https://huggingface.co/badmuriss/ppe-detection-yolov8s).
 
 | Métrica | Valor |
 |---|---|
-| Precision | 0.9253 |
-| Recall | 0.8924 |
-| mAP@0.5 | 0.9441 |
-| mAP@0.5:0.95 | 0.6596 |
+| Precision no split com vazamento | 0.9253 |
+| Recall no split com vazamento | 0.8924 |
+| mAP@0.5 no split com vazamento | 0.9441 |
+| mAP@0.5:0.95 no split com vazamento | 0.6596 |
 
 Treino: 50 epochs, yolov8s.pt como base, imgsz=640, batch=16, em dataset merged de 6 fontes
 públicas Roboflow filtradas para `helmet` e `vest`, com oversampling de vest para corrigir
 desbalanceamento (~5:1) e augmentations Albumentations para robustez a ângulos de CCTV.
+
+Os resultados acima permanecem como baseline técnico. O split aleatório colocou frames semelhantes dos mesmos vídeos em treino e validação e superestimou a generalização. Nenhuma métrica comercial deve usar esses valores.
 
 Pipeline completo (datasets, augment, train, eval, upload) em [`ml/`](./ml/README.md).
 

@@ -24,9 +24,12 @@ services:
       - "8000:8000"
     environment:
       - VIGILANTE_CAMERA_INDEX=0
-      - VIGILANTE_DATABASE_URL=postgresql+psycopg2://vigilante:vigilante_dev@postgres:5432/vigilante
+      - VIGILANTE_DATABASE_URL=${VIGILANTE_DATABASE_URL:-postgresql+psycopg2://vigilante:vigilante_dev@postgres:5432/vigilante}
+      - VIGILANTE_JWT_SECRET=${VIGILANTE_JWT_SECRET:-change-me-in-production}
+      - VIGILANTE_ALLOW_OPEN_REGISTRATION=${VIGILANTE_ALLOW_OPEN_REGISTRATION:-1}
       - VIGILANTE_BLOB_STORAGE_PATH=/data/alerts
       - VIGILANTE_RETRAINING_EXPORT_PATH=/data/feedback
+      - VIGILANTE_REPLAY_ROOT=/media
       - VIGILANTE_NOTIFY_ENCRYPTION_KEY=${VIGILANTE_NOTIFY_ENCRYPTION_KEY:-}
       - VIGILANTE_WHATSAPP_API_BASE=${VIGILANTE_WHATSAPP_API_BASE:-https://graph.facebook.com/v22.0}
       - VIGILANTE_WHATSAPP_HTTP_TIMEOUT=${VIGILANTE_WHATSAPP_HTTP_TIMEOUT:-10.0}
@@ -56,6 +59,7 @@ services:
       # Bind-mount so admin feedback exports show up directly under
       # ml/data/feedback for the merge_feedback.sh helper.
       - ./ml/data/feedback:/data/feedback
+      - ./media:/media:ro
     depends_on:
       postgres:
         condition: service_healthy

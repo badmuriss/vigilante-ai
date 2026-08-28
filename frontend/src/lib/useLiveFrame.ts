@@ -18,14 +18,13 @@ export interface LiveFrameState {
 export function useLiveFrame(cameraId: string | null, intervalMs = 250, enabled = true): LiveFrameState {
   const [state, setState] = useState<LiveFrameState>({ src: null, loading: true, error: null });
   const lastUrlRef = useRef<string | null>(null);
-  const aliveRef = useRef(true);
 
   useEffect(() => {
-    aliveRef.current = true;
+    let active = true;
     if (!cameraId || !enabled) {
       setState({ src: null, loading: false, error: null });
       return () => {
-        aliveRef.current = false;
+        active = false;
       };
     }
 
@@ -38,7 +37,7 @@ export function useLiveFrame(cameraId: string | null, intervalMs = 250, enabled 
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           cache: "no-store",
         });
-        if (!aliveRef.current) return;
+        if (!active) return;
         if (!res.ok) {
           if (res.status === 503) {
             setState((s) => ({ ...s, loading: true, error: null }));
@@ -47,17 +46,17 @@ export function useLiveFrame(cameraId: string | null, intervalMs = 250, enabled 
           }
         } else {
           const blob = await res.blob();
-          if (!aliveRef.current) return;
+          if (!active) return;
           const url = URL.createObjectURL(blob);
           if (lastUrlRef.current) URL.revokeObjectURL(lastUrlRef.current);
           lastUrlRef.current = url;
           setState({ src: url, loading: false, error: null });
         }
       } catch (err) {
-        if (!aliveRef.current) return;
+        if (!active) return;
         setState((s) => ({ ...s, loading: false, error: err instanceof Error ? err.message : "Erro" }));
       } finally {
-        if (aliveRef.current) {
+        if (active) {
           timer = setTimeout(tick, intervalMs);
         }
       }
@@ -66,7 +65,7 @@ export function useLiveFrame(cameraId: string | null, intervalMs = 250, enabled 
     void tick();
 
     return () => {
-      aliveRef.current = false;
+      active = false;
       if (timer) clearTimeout(timer);
       if (lastUrlRef.current) {
         URL.revokeObjectURL(lastUrlRef.current);

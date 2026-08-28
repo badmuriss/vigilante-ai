@@ -12,12 +12,13 @@ import threading
 from datetime import datetime
 from typing import Any, Callable, Sequence
 
+from app.config import settings
 from app.db.base import session_scope
 from app.db.entities import Camera as CameraEntity
 from app.detector import SafetyDetector
 from app.repositories import CameraRepository, SiteRepository, TenantRepository
 from app.services.alert_service import AlertService
-from app.sources import LocalCameraSource, RTSPSource, StreamHealth, StreamSource
+from app.sources import LocalCameraSource, ReplaySource, RTSPSource, StreamHealth, StreamSource
 from app.storage import BlobStore
 from app.stream import StreamProcessor
 
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 SOURCE_KIND_LOCAL = "local"
 SOURCE_KIND_RTSP = "rtsp"
+SOURCE_KIND_REPLAY = "replay"
 
 
 def _build_source(entity: CameraEntity) -> StreamSource:
@@ -37,6 +39,14 @@ def _build_source(entity: CameraEntity) -> StreamSource:
         if not entity.rtsp_url:
             raise ValueError(f"Camera {entity.id} missing rtsp_url")
         return RTSPSource(url=entity.rtsp_url, camera_id=entity.id)
+    if entity.source_kind == SOURCE_KIND_REPLAY:
+        if not entity.rtsp_url:
+            raise ValueError(f"Camera {entity.id} missing replay file")
+        return ReplaySource(
+            file_name=entity.rtsp_url,
+            root=settings.REPLAY_ROOT,
+            camera_id=entity.id,
+        )
     raise ValueError(f"Unknown source_kind: {entity.source_kind}")
 
 
@@ -102,6 +112,7 @@ class StreamRegistry:
         name: str,
         source_kind: str,
         rtsp_url: str | None = None,
+        replay_file: str | None = None,
         local_index: int | None = None,
         location: str | None = None,
         camera_id: str | None = None,
@@ -112,11 +123,12 @@ class StreamRegistry:
                 tenant_id = tenant.id
             site = SiteRepository(session).get_or_create_default(tenant_id)
             cam_repo = CameraRepository(session)
+            source_uri = replay_file if source_kind == SOURCE_KIND_REPLAY else rtsp_url
             entity = cam_repo.create(
                 site_id=site.id,
                 name=name,
                 source_kind=source_kind,
-                rtsp_url=rtsp_url,
+                rtsp_url=source_uri,
                 local_index=local_index,
                 location=location,
                 camera_id=camera_id,

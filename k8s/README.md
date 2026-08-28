@@ -271,6 +271,25 @@ O esperado: `postgres-0`, `backend`, `mediamtx` (2/2, mediamtx + ffmpeg-loop),
 Acessar: **https://vigilanteai.outis.com.br** (o cloudflared roda dentro do
 cluster e publica o Ingress).
 
+## Usar o Amazon RDS na demonstração da Fase 5
+
+Com o RDS já criado por `scripts/aws-fase5.sh deploy`, execute:
+
+```bash
+scripts/k3s-fase5-aws.sh deploy
+scripts/k3s-fase5-aws.sh status
+```
+
+O deploy preserva os outros campos do secret, substitui a conexão do banco pela
+URL protegida em `.env.aws`, monta `media/` somente para leitura no backend e
+reinicia as imagens atuais. O status confirma o host do RDS sem imprimir a
+senha, testa o backend dentro do cluster e valida login e câmera pelo domínio
+público.
+
+O StatefulSet `postgres` pode continuar ativo como opção de retorno. Enquanto o
+backend apontar para o RDS, ele não é usado pela aplicação. Não destrua o RDS
+antes da gravação ou enquanto o domínio público precisar dessa demonstração.
+
 ## Cadastrar câmera de teste
 
 Os vídeos de `media/*.mp4` são publicados como RTSP pelo sidecar `ffmpeg-loop`,

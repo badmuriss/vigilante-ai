@@ -125,13 +125,14 @@ def is_hex_color(s: str) -> bool:
 # --- Camera management (Phase A) ---
 
 
-SourceKind = Literal["local", "rtsp"]
+SourceKind = Literal["local", "rtsp", "replay"]
 
 
 class CameraCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     source_kind: SourceKind
     rtsp_url: str | None = None
+    replay_file: str | None = None
     local_index: int | None = None
     location: str | None = Field(default=None, max_length=256)
 
@@ -139,6 +140,8 @@ class CameraCreateRequest(BaseModel):
     def _check_source_fields(self) -> "CameraCreateRequest":
         if self.source_kind == "rtsp" and not self.rtsp_url:
             raise ValueError("rtsp_url is required when source_kind='rtsp'")
+        if self.source_kind == "replay" and not self.replay_file:
+            raise ValueError("replay_file is required when source_kind='replay'")
         if self.source_kind == "local" and self.local_index is None:
             raise ValueError("local_index is required when source_kind='local'")
         return self
@@ -162,6 +165,7 @@ class CameraResponse(BaseModel):
     name: str
     source_kind: SourceKind
     rtsp_url: str | None
+    replay_file: str | None
     local_index: int | None
     location: str | None
     created_at: datetime

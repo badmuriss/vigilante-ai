@@ -1,0 +1,8 @@
+services:
+  postgres:
+    profiles: ["local-database"]
+
+  backend:
+    depends_on: !reset {}
+    devices: !reset []
+    group_add: !reset []

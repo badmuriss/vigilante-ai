@@ -79,6 +79,9 @@ spec:
                 name: backend-config
             - secretRef:
                 name: backend-secrets
+          env:
+            - name: VIGILANTE_REPLAY_ROOT
+              value: /media
           ports:
             - name: http
               containerPort: 8000
@@ -124,7 +127,14 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
+            - name: replay-media
+              mountPath: /media
+              readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: vigilante-data
+        - name: replay-media
+          hostPath:
+            path: /home/badmuriss/Documents/vigilante-ai/media
+            type: Directory

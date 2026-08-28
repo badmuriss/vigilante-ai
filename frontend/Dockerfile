@@ -5,6 +5,8 @@ RUN npm ci
 
 FROM node:20.20.0-alpine3.22 AS build
 WORKDIR /app
+ARG NEXT_BACKEND_INTERNAL_URL=http://backend:8000
+ENV NEXT_BACKEND_INTERNAL_URL=$NEXT_BACKEND_INTERNAL_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

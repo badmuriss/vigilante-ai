@@ -262,7 +262,7 @@ export default function CamerasHubPage() {
           since pending alerts are gated server-side too. */}
       {isReviewer && (
         <div
-          className="pointer-events-none fixed bottom-4 left-4 z-[70] flex w-96 flex-col gap-2"
+          className="pointer-events-none fixed bottom-20 left-4 right-4 z-[70] flex w-auto flex-col gap-2 md:bottom-4 md:right-auto md:w-96"
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -354,7 +354,7 @@ function EmptyState() {
       </div>
       <h3 className="text-lg font-semibold text-text">Nenhuma câmera cadastrada</h3>
       <p className="max-w-md text-sm text-text-muted">
-        Adicione sua primeira câmera RTSP para começar o monitoramento. Você pode usar o botão no topo da página.
+        Adicione uma câmera RTSP, webcam ou vídeo de demonstração para começar o monitoramento.
       </p>
     </div>
   );

@@ -68,7 +68,7 @@ export interface User {
 
 // --- Cameras ---
 
-export type SourceKind = "local" | "rtsp";
+export type SourceKind = "local" | "rtsp" | "replay";
 
 export interface CameraHealth {
   online: boolean;
@@ -83,6 +83,7 @@ export interface Camera {
   name: string;
   source_kind: SourceKind;
   rtsp_url: string | null;
+  replay_file: string | null;
   local_index: number | null;
   location: string | null;
   created_at: string;
@@ -94,6 +95,7 @@ export interface CameraCreatePayload {
   name: string;
   source_kind: SourceKind;
   rtsp_url?: string | null;
+  replay_file?: string | null;
   local_index?: number | null;
   location?: string | null;
 }

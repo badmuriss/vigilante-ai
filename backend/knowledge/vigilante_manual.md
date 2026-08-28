@@ -50,7 +50,7 @@ Sem câmeras IP reais? Coloque vídeos `.mp4` na pasta `media/` e suba o stack c
 
 ## Tipos de violação detectados
 
-O modelo (YOLOv8s fine-tunado, mAP@0.5 = 0.944) detecta por pessoa:
+O modelo experimental usa YOLOv8s fine-tunado. O mAP@0.5 de 0,944 pertence a uma divisão de validação com vazamento entre vídeos e não comprova desempenho em canteiro. Cada câmera precisa de calibração e validação antes de uso comercial. O sistema detecta por pessoa:
 
 - **sem_capacete**: trabalhador sem capacete de proteção.
 - **sem_colete**: trabalhador sem colete de alta visibilidade.

@@ -321,7 +321,8 @@ def _to_camera_response(entity: CameraEntity) -> CameraResponse:
         id=str(entity.id),
         name=entity.name,
         source_kind=entity.source_kind,  # type: ignore[arg-type]
-        rtsp_url=entity.rtsp_url,
+        rtsp_url=entity.rtsp_url if entity.source_kind == "rtsp" else None,
+        replay_file=entity.rtsp_url if entity.source_kind == "replay" else None,
         local_index=entity.local_index,
         location=entity.location,
         created_at=entity.created_at,
@@ -423,6 +424,7 @@ def create_camera(
             name=request.name,
             source_kind=request.source_kind,
             rtsp_url=request.rtsp_url,
+            replay_file=request.replay_file,
             local_index=request.local_index,
             location=request.location,
         )

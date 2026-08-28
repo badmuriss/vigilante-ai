@@ -31,7 +31,8 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col bg-bg-sidebar text-text-on-dark">
+    <>
+    <aside className="hidden h-dvh w-64 shrink-0 flex-col bg-bg-sidebar text-text-on-dark md:flex">
       {/* Brand */}
       <div className="flex h-16 items-center border-b border-border-on-dark px-6">
         <span className="inline-flex items-center gap-2 text-[17px] font-semibold tracking-tight text-text-on-dark">
@@ -75,5 +76,35 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+      <nav
+        aria-label="Navegação principal"
+        className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-6 border-t border-border-on-dark bg-bg-sidebar text-text-on-dark md:hidden"
+      >
+        {NAV.map(({ href, label, icon: Icon }) => {
+          const active = pathname === href || pathname.startsWith(`${href}/`);
+          const shortLabel = label === "Câmeras ao vivo" ? "Câmeras" : label === "Configurações" ? "Ajustes" : label;
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-text-on-dark-muted transition-colors data-[active=true]:bg-bg-sidebar-elevated data-[active=true]:text-text-on-dark"
+              data-active={active}
+            >
+              <Icon size={18} strokeWidth={1.8} />
+              <span className="w-full truncate text-center text-[9px] font-medium">{shortLabel}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={logout}
+          className="flex min-w-0 flex-col items-center justify-center gap-1 px-1 text-text-on-dark-muted transition-colors hover:bg-bg-sidebar-elevated hover:text-text-on-dark"
+        >
+          <LogOut size={18} strokeWidth={1.8} />
+          <span className="text-[9px] font-medium">Sair</span>
+        </button>
+      </nav>
+    </>
   );
 }

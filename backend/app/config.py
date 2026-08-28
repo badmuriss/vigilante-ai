@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # Persistence. Docker sets Postgres explicitly; manual local runs use SQLite.
     DATABASE_URL: str = "sqlite:///./vigilante.db"
     BLOB_STORAGE_PATH: str = "./data/alerts"
+    REPLAY_ROOT: str = "./media"
     DB_ECHO: bool = False
 
     # Auth

@@ -41,6 +41,8 @@ frontend/out/
 .env
 .env.local
 .env*.local
+.env.aws
+.aws-fase5/
 
 # OS
 .DS_Store
@@ -61,10 +63,22 @@ Thumbs.db
 # Editor / agent caches
 .claude/
 .claude-plugin/
+.playwright-cli/
 harness.toml
+/VigilanteAI_Fase5_*.zip
+/VigilanteAI_Fase5_*/
 
-# FIAP entregaveis (school deliverables, not project docs)
-docs/
+# FIAP documentation: keep Markdown and build sources, ignore generated binaries.
+docs/**
+!docs/**/
+!docs/**/*.md
+!docs/**/*.html
+!docs/**/build/*.js
+!docs/**/build/package.json
+!docs/**/build/package-lock.json
+docs/**/build/node_modules/
+docs/90-arquivo/**
+fontes-md/
 
 # Ralph + ad-hoc tasks
 scripts/ralph

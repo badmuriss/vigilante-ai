@@ -1,0 +1,22 @@
+[
+  {
+    "slug": "aws-rds-storage",
+    "url": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html"
+  },
+  {
+    "slug": "aws-rds-pg-extensions",
+    "url": "https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-extensions.html"
+  },
+  {
+    "slug": "aws-public-ipv4-pricing",
+    "url": "https://aws.amazon.com/vpc/pricing/"
+  },
+  {
+    "slug": "aws-free-tier",
+    "url": "https://aws.amazon.com/free/"
+  },
+  {
+    "slug": "aws-promotional-credit-terms",
+    "url": "https://aws.amazon.com/awscredits/"
+  }
+]

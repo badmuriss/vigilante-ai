@@ -45,7 +45,7 @@ export function ChatWidget() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-6 right-24 z-50 flex h-[540px] max-h-[calc(100vh-3rem)] w-[min(380px,calc(100vw-7.5rem))] flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-2xl">
+        <div className="fixed bottom-20 right-4 z-50 flex h-[min(540px,calc(100dvh-6rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-border bg-bg shadow-2xl md:bottom-6 md:right-24 md:max-h-[calc(100vh-3rem)] md:w-[min(380px,calc(100vw-7.5rem))]">
           <div className="flex shrink-0 items-center justify-between border-b border-border bg-bg-elevated px-4 py-3">
             <span className="flex items-center gap-2 text-sm font-semibold text-text">
               <MessageCircle size={16} className="text-[#f5a623]" />
@@ -76,7 +76,7 @@ export function ChatWidget() {
         type="button"
         onClick={toggle}
         aria-label={open ? "Fechar assistente" : "Abrir assistente"}
-        className="fixed bottom-6 right-6 z-50 grid h-14 w-14 place-items-center rounded-full bg-[#f5a623] text-white shadow-lg transition hover:brightness-105"
+        className="fixed bottom-20 right-4 z-50 grid h-12 w-12 place-items-center rounded-full bg-[#f5a623] text-white shadow-lg transition hover:brightness-105 md:bottom-6 md:right-6 md:h-14 md:w-14"
       >
         {open ? <X size={22} /> : <MessageCircle size={24} />}
       </button>

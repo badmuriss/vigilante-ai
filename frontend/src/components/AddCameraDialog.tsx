@@ -15,6 +15,7 @@ export function AddCameraDialog({ onCreated }: AddCameraDialogProps) {
   const [name, setName] = useState("");
   const [sourceKind, setSourceKind] = useState<SourceKind>("rtsp");
   const [rtspUrl, setRtspUrl] = useState("");
+  const [replayFile, setReplayFile] = useState("canteiro2.mp4");
   const [localIndex, setLocalIndex] = useState(0);
   const [location, setLocation] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -26,6 +27,7 @@ export function AddCameraDialog({ onCreated }: AddCameraDialogProps) {
     setName("");
     setSourceKind("rtsp");
     setRtspUrl("");
+    setReplayFile("canteiro2.mp4");
     setLocalIndex(0);
     setLocation("");
     setProbeMsg(null);
@@ -55,6 +57,7 @@ export function AddCameraDialog({ onCreated }: AddCameraDialogProps) {
         name,
         source_kind: sourceKind,
         rtsp_url: sourceKind === "rtsp" ? rtspUrl : null,
+        replay_file: sourceKind === "replay" ? replayFile : null,
         local_index: sourceKind === "local" ? localIndex : null,
         location: location || null,
       });
@@ -78,9 +81,14 @@ export function AddCameraDialog({ onCreated }: AddCameraDialogProps) {
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-bg-overlay backdrop-blur-sm data-[state=open]:animate-fade-in" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-bg-elevated shadow-overlay outline-none data-[state=open]:animate-slide-up">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90dvh] w-[min(94vw,32rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-lg bg-bg-elevated shadow-overlay outline-none data-[state=open]:animate-slide-up">
           <div className="flex items-center justify-between border-b border-border px-6 py-4">
-            <Dialog.Title className="text-base font-semibold text-text">Adicionar câmera</Dialog.Title>
+            <div>
+              <Dialog.Title className="text-base font-semibold text-text">Adicionar câmera</Dialog.Title>
+              <Dialog.Description className="sr-only">
+                Cadastre uma câmera IP, um vídeo de demonstração ou uma webcam local.
+              </Dialog.Description>
+            </div>
             <Dialog.Close
               aria-label="Fechar"
               className="grid h-9 w-9 place-items-center rounded-md text-text-muted transition hover:bg-bg-sunken hover:text-text"
@@ -109,6 +117,7 @@ export function AddCameraDialog({ onCreated }: AddCameraDialogProps) {
                   className="input"
                 >
                   <option value="rtsp">Câmera IP (RTSP)</option>
+                  <option value="replay">Vídeo de demonstração</option>
                   <option value="local">Webcam local</option>
                 </select>
               </div>
@@ -140,6 +149,20 @@ export function AddCameraDialog({ onCreated }: AddCameraDialogProps) {
                     {probeMsg.ok ? "✓" : "✗"} {probeMsg.text}
                   </p>
                 )}
+              </div>
+            ) : sourceKind === "replay" ? (
+              <div className="space-y-1.5">
+                <label className="label">Arquivo disponível no servidor</label>
+                <input
+                  required
+                  value={replayFile}
+                  onChange={(event) => setReplayFile(event.target.value)}
+                  className="input mono-num"
+                  placeholder="canteiro2.mp4"
+                />
+                <p className="text-xs text-text-muted">
+                  Use apenas o nome de um vídeo autorizado na pasta de replay.
+                </p>
               </div>
             ) : (
               <div className="space-y-1.5">

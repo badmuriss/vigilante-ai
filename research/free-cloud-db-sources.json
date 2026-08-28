@@ -1,0 +1,6 @@
+[
+  {"slug":"neon-pricing","url":"https://neon.com/pricing"},
+  {"slug":"neon-pgvector","url":"https://neon.com/docs/extensions/pgvector"},
+  {"slug":"neon-connection-pooling","url":"https://neon.com/docs/connect/connection-pooling"},
+  {"slug":"cloudflare-tunnel","url":"https://developers.cloudflare.com/tunnel/"}
+]

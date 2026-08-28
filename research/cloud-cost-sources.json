@@ -1,0 +1,19 @@
+[
+  {"slug":"gcp-cloud-run-pricing","url":"https://cloud.google.com/run/pricing"},
+  {"slug":"gcp-cloud-sql-pricing","url":"https://cloud.google.com/sql/pricing"},
+  {"slug":"gcp-cloud-run-gcs-mount","url":"https://docs.cloud.google.com/run/docs/configuring/services/cloud-storage-volume-mounts"},
+  {"slug":"gcp-cloud-sql-pgvector","url":"https://docs.cloud.google.com/sql/docs/postgres/extensions"},
+  {"slug":"cloudflare-workers-pricing","url":"https://developers.cloudflare.com/workers/platform/pricing/"},
+  {"slug":"cloudflare-python-packages","url":"https://developers.cloudflare.com/workers/languages/python/packages/"},
+  {"slug":"cloudflare-containers","url":"https://developers.cloudflare.com/containers/"},
+  {"slug":"cloudflare-containers-pricing","url":"https://developers.cloudflare.com/containers/pricing/"},
+  {"slug":"cloudflare-containers-faq","url":"https://developers.cloudflare.com/containers/faq/"},
+  {"slug":"cloudflare-d1-pricing","url":"https://developers.cloudflare.com/d1/platform/pricing/"},
+  {"slug":"cloudflare-d1-limits","url":"https://developers.cloudflare.com/d1/platform/limits/"},
+  {"slug":"cloudflare-r2-pricing","url":"https://developers.cloudflare.com/r2/pricing/"},
+  {"slug":"cloudflare-hyperdrive","url":"https://developers.cloudflare.com/hyperdrive/"},
+  {"slug":"deepseek-pricing","url":"https://api-docs.deepseek.com/quick_start/pricing"},
+  {"slug":"openai-embedding-pricing","url":"https://developers.openai.com/api/docs/models/text-embedding-3-small"},
+  {"slug":"twilio-whatsapp-pricing","url":"https://www.twilio.com/en-us/whatsapp/pricing?locale=en"},
+  {"slug":"bcb-usd-brl","url":"https://api.bcb.gov.br/dados/serie/bcdata.sgs.1/dados/ultimos/10?formato=json"}
+]

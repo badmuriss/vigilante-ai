@@ -9,6 +9,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -65,6 +66,12 @@ class StreamSource(ABC):
     @abstractmethod
     def describe(self) -> str:
         """Human-readable identifier (safe for logs — credentials masked)."""
+
+    def _recover_read_failure(self, capture: cv2.VideoCapture) -> bool:
+        return False
+
+    def _after_frame_read(self, capture: cv2.VideoCapture) -> None:
+        """Allow sources with no natural read blocking to control their pace."""
 
     def start(self) -> None:
         if self.is_running:
@@ -124,6 +131,12 @@ class StreamSource(ABC):
 
                 ret, frame = capture.read()
                 if not ret or frame is None:
+                    if self._recover_read_failure(capture):
+                        with self._lock:
+                            self._health.online = True
+                            self._health.consecutive_failures = 0
+                            self._health.last_error = None
+                        continue
                     failures = self._increment_failure()
                     if failures >= self.FAILURE_THRESHOLD:
                         logger.warning(
@@ -148,6 +161,7 @@ class StreamSource(ABC):
                     self._frame = np.asarray(frame, dtype=np.uint8)
                     self._health.last_frame_at = time.time()
                     self._health.consecutive_failures = 0
+                self._after_frame_read(capture)
         finally:
             if capture is not None:
                 capture.release()
@@ -221,6 +235,62 @@ class RTSPSource(StreamSource):
         except Exception:
             pass
         return cap
+
+
+class ReplaySource(StreamSource):
+    """Video file mounted inside the runtime for an authorized demo replay."""
+
+    def __init__(
+        self,
+        file_name: str,
+        root: str | Path,
+        camera_id: str | None = None,
+    ) -> None:
+        super().__init__(camera_id=camera_id)
+        replay_root = Path(root).resolve()
+        replay_path = (replay_root / file_name).resolve()
+        try:
+            replay_path.relative_to(replay_root)
+        except ValueError as exc:
+            raise ValueError("Replay file must stay inside REPLAY_ROOT") from exc
+        if not replay_path.is_file():
+            raise ValueError(f"Replay file not found: {file_name}")
+        self._path = replay_path
+        self._frame_interval = 1.0 / 30.0
+        self._next_frame_at = 0.0
+        self._frames_since_reset = 0
+
+    def describe(self) -> str:
+        return f"replay:{self._path.name}"
+
+    def _open(self) -> cv2.VideoCapture:
+        capture = cv2.VideoCapture(str(self._path), cv2.CAP_FFMPEG)
+        fps = capture.get(cv2.CAP_PROP_FPS)
+        if not np.isfinite(fps) or fps <= 0:
+            fps = 30.0
+        self._frame_interval = 1.0 / min(float(fps), 60.0)
+        self._next_frame_at = time.monotonic()
+        self._frames_since_reset = 0
+        return capture
+
+    def _recover_read_failure(self, capture: cv2.VideoCapture) -> bool:
+        if self._frames_since_reset == 0:
+            return False
+        recovered = bool(capture.set(cv2.CAP_PROP_POS_FRAMES, 0))
+        if recovered:
+            self._next_frame_at = time.monotonic()
+            self._frames_since_reset = 0
+        return recovered
+
+    def _after_frame_read(self, capture: cv2.VideoCapture) -> None:
+        self._frames_since_reset += 1
+        self._next_frame_at += self._frame_interval
+        now = time.monotonic()
+        delay = self._next_frame_at - now
+        if delay > 0:
+            self._sleep(delay)
+        elif delay < -(self._frame_interval * 2):
+            self._next_frame_at = now
 
 
 def probe_rtsp(url: str, timeout_seconds: float = 5.0) -> tuple[bool, str]:

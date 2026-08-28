@@ -4,6 +4,7 @@ const {
   AlignmentType,
   BorderStyle,
   Document,
+  ExternalHyperlink,
   Footer,
   HeadingLevel,
   ImageRun,
@@ -28,6 +29,11 @@ const logoPath = path.join(repoRoot, "assets", "logo-black.png");
 
 const markdown = fs.readFileSync(inputPath, "utf8");
 const lines = markdown.split(/\r?\n/);
+const repositoryUrl = "https://github.com/badmuriss/vigilante-ai";
+const videoUrl = lines
+  .find((line) => line.startsWith("**Vídeo de apresentação:**"))
+  ?.replace("**Vídeo de apresentação:**", "")
+  .trim();
 const contentWidth = 9026;
 const orange = "F97316";
 const ink = "16202A";
@@ -309,8 +315,34 @@ const cover = [
   }),
   new Paragraph({
     alignment: AlignmentType.CENTER,
+    spacing: { after: 260 },
     children: [new TextRun({ text: "FIAP, agosto de 2026", size: 22, color: muted })],
   }),
+  new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 100 },
+    children: [
+      new TextRun({ text: "Código: ", size: 18, color: muted }),
+      new ExternalHyperlink({
+        link: repositoryUrl,
+        children: [new TextRun({ text: repositoryUrl, style: "Hyperlink", size: 18 })],
+      }),
+    ],
+  }),
+  ...(videoUrl && videoUrl !== "{{YOUTUBE_URL}}"
+    ? [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new TextRun({ text: "Vídeo: ", size: 18, color: muted }),
+            new ExternalHyperlink({
+              link: videoUrl,
+              children: [new TextRun({ text: videoUrl, style: "Hyperlink", size: 18 })],
+            }),
+          ],
+        }),
+      ]
+    : []),
   new Paragraph({ children: [new PageBreak()] }),
   new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Sumário")] }),
   paragraph("1. Equipe"),

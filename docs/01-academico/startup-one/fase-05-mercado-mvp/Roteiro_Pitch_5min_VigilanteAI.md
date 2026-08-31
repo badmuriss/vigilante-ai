@@ -41,7 +41,8 @@ Tempo-alvo: 4 minutos e 45 segundos. Deixe o sistema aberto, com o replay autori
 - Ocultar tokens, URLs privadas, telefones e dados pessoais.
 - Fechar notificações do computador.
 - Usar resolução 1080p e ampliar o navegador para o texto ficar legível.
-- Mostrar rapidamente `/readyz` ou a tela do AWS RDS sem revelar endpoint, conta ou credenciais.
+- Antes de gravar, executar `scripts/k3s-fase5-aws.sh status` e confirmar que o login público e a câmera respondem.
+- Se mostrar o console da AWS, enquadrar apenas o status `Available` e ocultar conta, endpoint e credenciais.
 - Deixar o link do GitHub visível no último slide.
 - Publicar no YouTube como não listado e testar o link em janela anônima.
 - Executar `scripts/finalize-fase5.sh URL_DO_YOUTUBE` para substituir o marcador, reconstruir os PDFs e gerar o ZIP final.

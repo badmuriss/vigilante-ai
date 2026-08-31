@@ -6,6 +6,7 @@ Este pacote contém os itens pedidos pela FIAP:
 2. `2_Apresentacao_Fase5_VigilanteAI.pdf`
 3. `3_LINKS.txt`, com GitHub, demonstração pública, acesso acadêmico e estado do vídeo
 4. `4_CHECKLIST_FINAL.md`
+5. `5_ROTEIRO_PITCH_5MIN.txt`, com fala, tempo e ações da demonstração
 
 O código-fonte está no repositório público informado em `3_LINKS.txt`. O pacote não duplica o repositório em outro ZIP.
 

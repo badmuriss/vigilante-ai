@@ -4,6 +4,7 @@
 
 - [x] Documentação em PDF gerada e aberta localmente.
 - [x] Apresentação em PDF gerada e inspecionada como imagens.
+- [x] Roteiro de até cinco minutos incluído no pacote.
 - [x] Link público do GitHub registrado.
 - [x] Código-fonte entregue pelo link do GitHub, sem ZIP duplicado.
 - [ ] Link do YouTube não listado inserido no documento e em `3_LINKS.txt`.

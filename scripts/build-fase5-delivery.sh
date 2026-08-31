@@ -29,6 +29,7 @@ google-chrome-stable \
 
 cp "${DOC_PDF}" "${PACKAGE_DIR}/1_Documentacao_Fase5_VigilanteAI.pdf"
 cp "${SLIDES_PDF}" "${PACKAGE_DIR}/2_Apresentacao_Fase5_VigilanteAI.pdf"
+cp "${PHASE_DIR}/Roteiro_Pitch_5min_VigilanteAI.md" "${PACKAGE_DIR}/5_ROTEIRO_PITCH_5MIN.txt"
 
 doc_pages="$(pdfinfo "${DOC_PDF}" | awk '/^Pages:/ {print $2}')"
 slide_pages="$(pdfinfo "${SLIDES_PDF}" | awk '/^Pages:/ {print $2}')"
